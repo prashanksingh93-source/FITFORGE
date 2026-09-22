@@ -10,15 +10,20 @@ import {
 import { useStore } from "../context/StoreContext";
 
 export default function Cart() {
+  const store = useStore();
+
+  console.log("CART PAGE STORE:", store);
+  console.log("CART PAGE CART:", store?.cart);
+
   const {
-    cart,
-    cartCount,
-    cartTotal,
+    cart = [],
+    cartCount = 0,
+    cartTotal = 0,
     removeFromCart,
     updateCartQuantity,
-  } = useStore();
+  } = store;
 
-  if (cart.length === 0) {
+  if (!Array.isArray(cart) || cart.length === 0) {
     return (
       <main className="min-h-[70vh] flex flex-col items-center justify-center px-6">
         <h1 className="text-4xl font-black">
@@ -26,7 +31,7 @@ export default function Cart() {
         </h1>
 
         <p className="text-gray-500 mt-4">
-          Discover something built for your next workout.
+          Add some FITFORGE products before checkout.
         </p>
 
         <Link
@@ -57,17 +62,27 @@ export default function Cart() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-12">
-        {/* ITEMS */}
+        {/* CART ITEMS */}
+
         <div className="lg:col-span-2 space-y-6">
           {cart.map((item) => {
             const product = item.product;
 
+            if (!product) {
+              return null;
+            }
+
             const image =
               product.images?.[0] ||
-              "https://via.placeholder.com/200x250";
+              "https://via.placeholder.com/300";
 
             const price =
-              product.salePrice || product.price;
+              product.salePrice != null
+                ? Number(product.salePrice)
+                : Number(product.price || 0);
+
+            const quantity =
+              Number(item.quantity) || 1;
 
             return (
               <div
@@ -81,7 +96,7 @@ export default function Cart() {
                 />
 
                 <div className="flex-1">
-                  <div className="flex justify-between gap-4">
+                  <div className="flex justify-between">
                     <div>
                       <h2 className="font-bold text-xl">
                         {product.name}
@@ -102,9 +117,14 @@ export default function Cart() {
                           Color: {item.color}
                         </p>
                       )}
+
+                      <p className="font-medium mt-3">
+                        ₹{price.toLocaleString("en-IN")}
+                      </p>
                     </div>
 
                     <button
+                      type="button"
                       onClick={() =>
                         removeFromCart(
                           product._id,
@@ -112,18 +132,20 @@ export default function Cart() {
                           item.color
                         )
                       }
+                      className="text-gray-500 hover:text-black"
                     >
-                      <Trash2 className="w-5 text-gray-500" />
+                      <Trash2 className="w-5 h-5" />
                     </button>
                   </div>
 
                   <div className="flex justify-between items-center mt-8">
                     <div className="flex items-center border">
                       <button
+                        type="button"
                         onClick={() =>
                           updateCartQuantity(
                             product._id,
-                            item.quantity - 1,
+                            quantity - 1,
                             item.size,
                             item.color
                           )
@@ -134,14 +156,15 @@ export default function Cart() {
                       </button>
 
                       <span className="px-4">
-                        {item.quantity}
+                        {quantity}
                       </span>
 
                       <button
+                        type="button"
                         onClick={() =>
                           updateCartQuantity(
                             product._id,
-                            item.quantity + 1,
+                            quantity + 1,
                             item.size,
                             item.color
                           )
@@ -155,7 +178,7 @@ export default function Cart() {
                     <p className="font-bold">
                       ₹
                       {(
-                        price * item.quantity
+                        price * quantity
                       ).toLocaleString("en-IN")}
                     </p>
                   </div>
@@ -166,27 +189,35 @@ export default function Cart() {
         </div>
 
         {/* SUMMARY */}
+
         <div className="border p-8 h-fit">
           <h2 className="text-2xl font-black">
             ORDER SUMMARY
           </h2>
 
           <div className="flex justify-between mt-8">
-            <span>Subtotal</span>
-            <span>
-              ₹{cartTotal.toLocaleString("en-IN")}
-            </span>
+            <span>Items</span>
+            <span>{cartCount}</span>
           </div>
 
           <div className="flex justify-between mt-4">
-            <span>Shipping</span>
-            <span>Calculated at checkout</span>
+            <span>Subtotal</span>
+            <span>
+              ₹
+              {Number(cartTotal).toLocaleString(
+                "en-IN"
+              )}
+            </span>
           </div>
 
           <div className="border-t mt-6 pt-6 flex justify-between font-bold text-xl">
             <span>Total</span>
+
             <span>
-              ₹{cartTotal.toLocaleString("en-IN")}
+              ₹
+              {Number(cartTotal).toLocaleString(
+                "en-IN"
+              )}
             </span>
           </div>
 
@@ -195,6 +226,7 @@ export default function Cart() {
             className="mt-8 bg-black text-white py-4 flex items-center justify-center gap-3 font-bold"
           >
             CHECKOUT
+
             <ArrowRight className="w-4" />
           </Link>
         </div>

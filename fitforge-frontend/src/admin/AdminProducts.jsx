@@ -1,52 +1,82 @@
-import React, {
-  useEffect,
-  useState,
-} from "react";
-
-import {
-  Link,
-  useNavigate,
-} from "react-router-dom";
-
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Plus,
+  Search,
   Pencil,
   Trash2,
+  Power,
   Package,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  IndianRupee,
+  Layers3,
 } from "lucide-react";
-
+import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
 import { toast } from "sonner";
 
 import api from "../services/api";
 
 const AdminProducts = () => {
-  const navigate = useNavigate();
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
 
-  const [products, setProducts] =
-    useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [search, setSearch] = useState("");
+  const [collection, setCollection] = useState("all");
+  const [category, setCategory] = useState("all");
+  const [stockStatus, setStockStatus] = useState("all");
 
   const fetchProducts = async () => {
     try {
       setLoading(true);
 
-      const response =
-        await api.get(
-          "/admin/products"
-        );
+      const response = await api.get("/products", {
+        params: {
+          search: search.trim() || undefined,
+          collection:
+            collection !== "all"
+              ? collection
+              : undefined,
+          category:
+            category !== "all"
+              ? category
+              : undefined,
+        },
+      });
 
       if (response.data.success) {
-        setProducts(
-          response.data.products
-        );
+        let result = response.data.products || [];
+
+        if (stockStatus === "out") {
+          result = result.filter(
+            (product) => Number(product.stock) === 0
+          );
+        }
+
+        if (stockStatus === "low") {
+          result = result.filter(
+            (product) =>
+              Number(product.stock) > 0 &&
+              Number(product.stock) <=
+                Number(product.lowStockThreshold || 5)
+          );
+        }
+
+        if (stockStatus === "in") {
+          result = result.filter(
+            (product) =>
+              Number(product.stock) >
+              Number(product.lowStockThreshold || 5)
+          );
+        }
+
+        setProducts(result);
       }
     } catch (error) {
-      console.error(
-        "Products error:",
-        error
-      );
+      console.error("Products error:", error);
 
       toast.error(
         error.response?.data?.message ||
@@ -57,272 +87,574 @@ const AdminProducts = () => {
     }
   };
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const deleteHandler = async (
-    productId
-  ) => {
-    const confirmed =
-      window.confirm(
-        "Remove this product?"
+  const fetchCategories = async () => {
+    try {
+      const response = await api.get(
+        "/categories/active"
       );
 
-    if (!confirmed) return;
-
-    try {
-      const response =
-        await api.delete(
-          `/admin/products/${productId}`
-        );
-
       if (response.data.success) {
-        toast.success(
-          "Product removed"
-        );
-
-        fetchProducts();
+        setCategories(response.data.categories);
       }
+    } catch (error) {
+      console.error("Categories error:", error);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchProducts();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [
+    search,
+    collection,
+    category,
+    stockStatus,
+  ]);
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const stats = useMemo(() => {
+    const total = products.length;
+
+    const active = products.filter(
+      (product) => product.isActive
+    ).length;
+
+    const outOfStock = products.filter(
+      (product) => Number(product.stock) === 0
+    ).length;
+
+    const lowStock = products.filter(
+      (product) =>
+        Number(product.stock) > 0 &&
+        Number(product.stock) <=
+          Number(product.lowStockThreshold || 5)
+    ).length;
+
+    const inventoryValue = products.reduce(
+      (total, product) =>
+        total +
+        Number(product.price || 0) *
+          Number(product.stock || 0),
+      0
+    );
+
+    return {
+      total,
+      active,
+      outOfStock,
+      lowStock,
+      inventoryValue,
+    };
+  }, [products]);
+
+  const handleToggle = async (product) => {
+    try {
+      await api.patch(
+        `/admin/products/${product._id}/toggle`
+      );
+
+      toast.success(
+        product.isActive
+          ? "Product deactivated"
+          : "Product activated"
+      );
+
+      fetchProducts();
     } catch (error) {
       toast.error(
         error.response?.data?.message ||
-          "Failed to remove product"
+          "Failed to update product"
       );
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">
-          Loading products...
-        </p>
-      </div>
+  const handleDelete = async (product) => {
+    const confirmed = window.confirm(
+      `Delete "${product.name}"? This action cannot be undone.`
     );
-  }
+
+    if (!confirmed) return;
+
+    try {
+      await api.delete(
+        `/admin/products/${product._id}`
+      );
+
+      toast.success("Product deleted successfully");
+
+      fetchProducts();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message ||
+          "Failed to delete product"
+      );
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 mb-8">
+    <div className="min-h-screen bg-[#f7f7f7]">
+      {/* HEADER */}
+      <div className="sticky top-0 z-20 border-b border-neutral-200 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
           <div>
-            <p className="text-xs font-bold tracking-[0.3em] text-gray-500">
+            <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-neutral-400">
               FITFORGE ADMIN
             </p>
 
-            <h1 className="text-4xl font-black mt-2">
+            <h1 className="mt-1 text-2xl font-black sm:text-3xl">
               PRODUCTS
             </h1>
-
-            <p className="text-gray-500 mt-2">
-              {products.length} products
-            </p>
           </div>
 
           <Link
             to="/admin/products/add"
-            className="inline-flex items-center justify-center gap-2 bg-black text-white px-5 py-3 font-bold hover:bg-gray-800"
+            className="flex items-center gap-2 rounded-xl bg-black px-4 py-3 text-sm font-bold text-white transition hover:bg-neutral-800"
           >
-            <Plus className="w-5 h-5" />
-            ADD PRODUCT
+            <Plus size={18} />
+
+            <span className="hidden sm:inline">
+              ADD PRODUCT
+            </span>
+
+            <span className="sm:hidden">ADD</span>
           </Link>
         </div>
+      </div>
 
-        {products.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center">
-            <Package className="w-12 h-12 mx-auto text-gray-400" />
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
-            <h2 className="text-xl font-black mt-4">
-              No products found
+        {/* STATS */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <StatCard
+            title="Products"
+            value={stats.total}
+            icon={Package}
+          />
+
+          <StatCard
+            title="Active"
+            value={stats.active}
+            icon={CheckCircle2}
+          />
+
+          <StatCard
+            title="Low Stock"
+            value={stats.lowStock}
+            icon={AlertTriangle}
+          />
+
+          <StatCard
+            title="Out of Stock"
+            value={stats.outOfStock}
+            icon={XCircle}
+          />
+
+          <StatCard
+            title="Inventory Value"
+            value={`₹${stats.inventoryValue.toLocaleString(
+              "en-IN"
+            )}`}
+            icon={IndianRupee}
+          />
+        </div>
+
+        {/* FILTERS */}
+        <div className="mt-8 rounded-2xl border border-neutral-200 bg-white p-4">
+          <div className="grid gap-3 lg:grid-cols-4">
+            <div className="relative lg:col-span-1">
+              <Search
+                size={18}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400"
+              />
+
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                className="h-12 w-full rounded-xl border border-neutral-200 bg-neutral-50 pl-11 pr-4 text-sm outline-none transition focus:border-black focus:bg-white"
+              />
+            </div>
+
+            <select
+              value={collection}
+              onChange={(event) =>
+                setCollection(event.target.value)
+              }
+              className="h-12 rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-sm font-semibold outline-none focus:border-black"
+            >
+              <option value="all">
+                All Collections
+              </option>
+
+              <option value="Performance">
+                Performance
+              </option>
+
+              <option value="Luxury">
+                Luxury
+              </option>
+            </select>
+
+            <select
+              value={category}
+              onChange={(event) =>
+                setCategory(event.target.value)
+              }
+              className="h-12 rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-sm font-semibold outline-none focus:border-black"
+            >
+              <option value="all">
+                All Categories
+              </option>
+
+              {categories.map((item) => (
+                <option
+                  key={item._id}
+                  value={item._id}
+                >
+                  {item.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={stockStatus}
+              onChange={(event) =>
+                setStockStatus(event.target.value)
+              }
+              className="h-12 rounded-xl border border-neutral-200 bg-neutral-50 px-4 text-sm font-semibold outline-none focus:border-black"
+            >
+              <option value="all">
+                All Stock
+              </option>
+
+              <option value="in">
+                In Stock
+              </option>
+
+              <option value="low">
+                Low Stock
+              </option>
+
+              <option value="out">
+                Out of Stock
+              </option>
+            </select>
+          </div>
+        </div>
+
+        {/* PRODUCT LIST */}
+        <div className="mt-6 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+          {loading ? (
+            <LoadingState />
+          ) : products.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="divide-y divide-neutral-100">
+              {products.map((product) => (
+                <ProductRow
+                  key={product._id}
+                  product={product}
+                  onToggle={handleToggle}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProductRow = ({
+  product,
+  onToggle,
+  onDelete,
+}) => {
+  const stock = Number(product.stock || 0);
+
+  const threshold = Number(
+    product.lowStockThreshold || 5
+  );
+
+  const isOut = stock === 0;
+  const isLow = stock > 0 && stock <= threshold;
+
+  const image =
+    product.images?.[0] ||
+    "";
+
+  const categoryName =
+    product.category?.name ||
+    "Uncategorized";
+
+  const currentPrice =
+    product.salePrice !== null &&
+    product.salePrice !== undefined
+      ? product.salePrice
+      : product.price;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="p-5 transition hover:bg-neutral-50 sm:p-6"
+    >
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+
+        {/* IMAGE */}
+        <div className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-neutral-100">
+          {image ? (
+            <img
+              src={image}
+              alt={product.name}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-neutral-400">
+              <Package size={26} />
+            </div>
+          )}
+        </div>
+
+        {/* PRODUCT */}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-black">
+              {product.name}
             </h2>
 
-            <Link
-              to="/admin/products/add"
-              className="inline-block mt-5 bg-black text-white px-5 py-3 font-bold"
-            >
-              ADD FIRST PRODUCT
-            </Link>
+            {product.isActive ? (
+              <span className="rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-bold uppercase text-green-700">
+                Active
+              </span>
+            ) : (
+              <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-bold uppercase text-neutral-500">
+                Inactive
+              </span>
+            )}
+
+            {product.collection && (
+              <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-bold uppercase text-neutral-600">
+                {product.collection}
+              </span>
+            )}
           </div>
-        ) : (
-          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-black text-white">
-                  <tr>
-                    <th className="px-5 py-4">
-                      PRODUCT
-                    </th>
 
-                    <th className="px-5 py-4">
-                      COLLECTION
-                    </th>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-neutral-500">
+            <span>
+              {categoryName}
+            </span>
 
-                    <th className="px-5 py-4">
-                      PRICE
-                    </th>
+            <span>
+              {product.gender}
+            </span>
 
-                    <th className="px-5 py-4">
-                      STOCK
-                    </th>
+            {product.sku && (
+              <span>
+                SKU: {product.sku}
+              </span>
+            )}
+          </div>
 
-                    <th className="px-5 py-4">
-                      STATUS
-                    </th>
+          <div className="mt-3 flex flex-wrap items-center gap-4">
+            <div>
+              <span className="text-lg font-black">
+                ₹
+                {Number(
+                  currentPrice
+                ).toLocaleString("en-IN")}
+              </span>
 
-                    <th className="px-5 py-4">
-                      ACTIONS
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {products.map(
-                    (product) => {
-                      const image =
-                        product.images?.[0];
-
-                      const category =
-                        typeof product.category ===
-                        "object"
-                          ? product.category
-                              ?.name
-                          : product.category;
-
-                      const lowStock =
-                        product.stock <=
-                        product.lowStockThreshold;
-
-                      return (
-                        <tr
-                          key={product._id}
-                          className="border-b border-gray-100"
-                        >
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-4 min-w-[280px]">
-                              <div className="w-16 h-20 bg-gray-100 rounded overflow-hidden shrink-0">
-                                {image ? (
-                                  <img
-                                    src={image}
-                                    alt={
-                                      product.name
-                                    }
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
-                                    <Package className="w-6 h-6 text-gray-400" />
-                                  </div>
-                                )}
-                              </div>
-
-                              <div>
-                                <p className="font-bold">
-                                  {product.name}
-                                </p>
-
-                                <p className="text-sm text-gray-500 mt-1">
-                                  {category ||
-                                    "Uncategorized"}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span className="text-sm font-bold">
-                              {
-                                product.collection
-                              }
-                            </span>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <div>
-                              <p className="font-bold">
-                                ₹
-                                {Number(
-                                  product.salePrice ??
-                                    product.price
-                                ).toLocaleString(
-                                  "en-IN"
-                                )}
-                              </p>
-
-                              {product.salePrice && (
-                                <p className="text-xs text-gray-400 line-through">
-                                  ₹
-                                  {Number(
-                                    product.price
-                                  ).toLocaleString(
-                                    "en-IN"
-                                  )}
-                                </p>
-                              )}
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span
-                              className={
-                                lowStock
-                                  ? "font-bold text-red-600"
-                                  : "font-bold"
-                              }
-                            >
-                              {product.stock}
-                            </span>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span
-                              className={`text-xs font-bold px-3 py-1 rounded-full ${
-                                product.isActive
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-gray-200 text-gray-600"
-                              }`}
-                            >
-                              {product.isActive
-                                ? "ACTIVE"
-                                : "INACTIVE"}
-                            </span>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() =>
-                                  navigate(
-                                    `/admin/products/edit/${product._id}`
-                                  )
-                                }
-                                className="w-10 h-10 border border-gray-200 flex items-center justify-center hover:bg-black hover:text-white"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </button>
-
-                              <button
-                                onClick={() =>
-                                  deleteHandler(
-                                    product._id
-                                  )
-                                }
-                                className="w-10 h-10 border border-gray-200 flex items-center justify-center hover:bg-red-600 hover:text-white"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    }
-                  )}
-                </tbody>
-              </table>
+              {product.salePrice !== null &&
+                product.salePrice !== undefined && (
+                  <span className="ml-2 text-sm text-neutral-400 line-through">
+                    ₹
+                    {Number(
+                      product.price
+                    ).toLocaleString("en-IN")}
+                  </span>
+                )}
             </div>
+
+            <StockBadge
+              stock={stock}
+              isOut={isOut}
+              isLow={isLow}
+            />
           </div>
-        )}
+        </div>
+
+        {/* BADGES */}
+        <div className="hidden min-w-40 flex-wrap gap-2 xl:flex">
+          {product.badges?.slice(0, 2).map(
+            (badge) => (
+              <span
+                key={badge}
+                className="rounded-full border border-neutral-200 px-3 py-1 text-[10px] font-bold uppercase"
+              >
+                {badge}
+              </span>
+            )
+          )}
+        </div>
+
+        {/* ACTIONS */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onToggle(product)}
+            title={
+              product.isActive
+                ? "Deactivate"
+                : "Activate"
+            }
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-200 text-neutral-600 transition hover:bg-black hover:text-white"
+          >
+            <Power size={17} />
+          </button>
+
+          <Link
+            to={`/admin/products/edit/${product._id}`}
+            title="Edit"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-200 text-neutral-600 transition hover:bg-black hover:text-white"
+          >
+            <Pencil size={17} />
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => onDelete(product)}
+            title="Delete"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-100 text-red-500 transition hover:bg-red-500 hover:text-white"
+          >
+            <Trash2 size={17} />
+          </button>
+        </div>
       </div>
+    </motion.div>
+  );
+};
+
+const StockBadge = ({
+  stock,
+  isOut,
+  isLow,
+}) => {
+  if (isOut) {
+    return (
+      <span className="flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1 text-xs font-bold text-red-700">
+        <XCircle size={13} />
+        OUT OF STOCK
+      </span>
+    );
+  }
+
+  if (isLow) {
+    return (
+      <span className="flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
+        <AlertTriangle size={13} />
+        LOW · {stock}
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+      <CheckCircle2 size={13} />
+      {stock} IN STOCK
+    </span>
+  );
+};
+
+const StatCard = ({
+  title,
+  value,
+  icon: Icon,
+}) => {
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+            {title}
+          </p>
+
+          <p className="mt-2 text-2xl font-black">
+            {value}
+          </p>
+        </div>
+
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-black text-white">
+          <Icon size={19} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const LoadingState = () => {
+  return (
+    <div className="space-y-5 p-6">
+      {[1, 2, 3, 4, 5].map(
+        (item) => (
+          <div
+            key={item}
+            className="flex animate-pulse items-center gap-5"
+          >
+            <div className="h-24 w-24 rounded-2xl bg-neutral-200" />
+
+            <div className="flex-1">
+              <div className="h-5 w-64 rounded bg-neutral-200" />
+
+              <div className="mt-3 h-3 w-80 rounded bg-neutral-100" />
+
+              <div className="mt-3 h-4 w-40 rounded bg-neutral-100" />
+            </div>
+
+            <div className="h-10 w-32 rounded bg-neutral-100" />
+          </div>
+        )
+      )}
+    </div>
+  );
+};
+
+const EmptyState = () => {
+  return (
+    <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-neutral-100">
+        <Package
+          size={28}
+          className="text-neutral-400"
+        />
+      </div>
+
+      <h2 className="mt-5 text-xl font-black">
+        No products found
+      </h2>
+
+      <p className="mt-2 max-w-md text-sm text-neutral-500">
+        Try changing your search or filters, or add
+        your first product.
+      </p>
+
+      <Link
+        to="/admin/products/add"
+        className="mt-6 flex items-center gap-2 rounded-xl bg-black px-5 py-3 text-sm font-bold text-white"
+      >
+        <Plus size={17} />
+        ADD PRODUCT
+      </Link>
     </div>
   );
 };

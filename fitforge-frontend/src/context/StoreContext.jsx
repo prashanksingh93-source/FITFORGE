@@ -4,25 +4,61 @@ import {
   useEffect,
   useState,
 } from "react";
+
 import api from "../services/api";
 
-const StoreContext = createContext();
+const StoreContext = createContext(null);
 
 export const StoreProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
 
   const [cart, setCart] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("fitforge-cart")) || [];
-    } catch {
+      const savedCart =
+        localStorage.getItem("fitforge-cart");
+
+      if (!savedCart) {
+        return [];
+      }
+
+      const parsedCart = JSON.parse(savedCart);
+
+      return Array.isArray(parsedCart)
+        ? parsedCart
+        : [];
+    } catch (error) {
+      console.error(
+        "Failed to load cart:",
+        error
+      );
+
       return [];
     }
   });
 
   const [wishlist, setWishlist] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("fitforge-wishlist")) || [];
-    } catch {
+      const savedWishlist =
+        localStorage.getItem(
+          "fitforge-wishlist"
+        );
+
+      if (!savedWishlist) {
+        return [];
+      }
+
+      const parsedWishlist =
+        JSON.parse(savedWishlist);
+
+      return Array.isArray(parsedWishlist)
+        ? parsedWishlist
+        : [];
+    } catch (error) {
+      console.error(
+        "Failed to load wishlist:",
+        error
+      );
+
       return [];
     }
   });
@@ -30,21 +66,35 @@ export const StoreProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // ================================
+  // FETCH PRODUCTS
+  // ================================
+
   const fetchProducts = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const response = await api.get("/products");
+      const response =
+        await api.get("/products");
 
-      if (response.data.success) {
-        setProducts(response.data.products);
+      if (response.data?.success) {
+        setProducts(
+          response.data.products || []
+        );
       } else {
         setProducts([]);
       }
     } catch (error) {
-      console.error("Failed to fetch products:", error);
-      setError("Unable to load products.");
+      console.error(
+        "Failed to fetch products:",
+        error
+      );
+
+      setError(
+        "Unable to load products."
+      );
+
       setProducts([]);
     } finally {
       setLoading(false);
@@ -55,12 +105,25 @@ export const StoreProvider = ({ children }) => {
     fetchProducts();
   }, []);
 
+  // ================================
+  // SAVE CART
+  // ================================
+
   useEffect(() => {
     localStorage.setItem(
       "fitforge-cart",
       JSON.stringify(cart)
     );
+
+    console.log(
+      "FITFORGE CART:",
+      cart
+    );
   }, [cart]);
+
+  // ================================
+  // SAVE WISHLIST
+  // ================================
 
   useEffect(() => {
     localStorage.setItem(
@@ -69,44 +132,84 @@ export const StoreProvider = ({ children }) => {
     );
   }, [wishlist]);
 
+  // ================================
+  // ADD TO CART
+  // ================================
+
   const addToCart = (
     product,
     quantity = 1,
     size = "",
     color = ""
   ) => {
-    setCart((currentCart) => {
-      const existingItem = currentCart.find(
-        (item) =>
-          item.product._id === product._id &&
-          item.size === size &&
-          item.color === color
+    if (!product?._id) {
+      console.error(
+        "Cannot add product without _id:",
+        product
       );
 
+      return;
+    }
+
+    console.log(
+      "ADDING TO CART:",
+      product.name
+    );
+
+    setCart((currentCart) => {
+      const safeCart =
+        Array.isArray(currentCart)
+          ? currentCart
+          : [];
+
+      const existingItem =
+        safeCart.find(
+          (item) =>
+            item?.product?._id ===
+              product._id &&
+            item.size === size &&
+            item.color === color
+        );
+
       if (existingItem) {
-        return currentCart.map((item) =>
-          item.product._id === product._id &&
-          item.size === size &&
-          item.color === color
-            ? {
-                ...item,
-                quantity: item.quantity + quantity,
-              }
-            : item
+        return safeCart.map(
+          (item) =>
+            item?.product?._id ===
+              product._id &&
+            item.size === size &&
+            item.color === color
+              ? {
+                  ...item,
+                  quantity:
+                    Number(
+                      item.quantity || 0
+                    ) +
+                    Number(
+                      quantity || 1
+                    ),
+                }
+              : item
         );
       }
 
+      const newItem = {
+        product,
+        quantity:
+          Number(quantity) || 1,
+        size,
+        color,
+      };
+
       return [
-        ...currentCart,
-        {
-          product,
-          quantity,
-          size,
-          color,
-        },
+        ...safeCart,
+        newItem,
       ];
     });
   };
+
+  // ================================
+  // REMOVE FROM CART
+  // ================================
 
   const removeFromCart = (
     productId,
@@ -117,7 +220,8 @@ export const StoreProvider = ({ children }) => {
       currentCart.filter(
         (item) =>
           !(
-            item.product._id === productId &&
+            item?.product?._id ===
+              productId &&
             item.size === size &&
             item.color === color
           )
@@ -125,64 +229,134 @@ export const StoreProvider = ({ children }) => {
     );
   };
 
+  // ================================
+  // UPDATE QUANTITY
+  // ================================
+
   const updateCartQuantity = (
     productId,
     quantity,
     size = "",
     color = ""
   ) => {
-    if (quantity < 1) return;
+    const newQuantity =
+      Number(quantity);
+
+    if (newQuantity < 1) {
+      return;
+    }
 
     setCart((currentCart) =>
-      currentCart.map((item) =>
-        item.product._id === productId &&
-        item.size === size &&
-        item.color === color
-          ? {
-              ...item,
-              quantity,
-            }
-          : item
+      currentCart.map(
+        (item) =>
+          item?.product?._id ===
+            productId &&
+          item.size === size &&
+          item.color === color
+            ? {
+                ...item,
+                quantity:
+                  newQuantity,
+              }
+            : item
       )
     );
   };
+
+  // ================================
+  // CLEAR CART
+  // ================================
 
   const clearCart = () => {
     setCart([]);
   };
 
+  // ================================
+  // WISHLIST
+  // ================================
+
   const toggleWishlist = (product) => {
-    setWishlist((currentWishlist) => {
-      const exists = currentWishlist.some(
-        (item) => item._id === product._id
-      );
+    if (!product?._id) {
+      return;
+    }
 
-      if (exists) {
-        return currentWishlist.filter(
-          (item) => item._id !== product._id
-        );
+    setWishlist(
+      (currentWishlist) => {
+        const exists =
+          currentWishlist.some(
+            (item) =>
+              item?._id ===
+              product._id
+          );
+
+        if (exists) {
+          return currentWishlist.filter(
+            (item) =>
+              item?._id !==
+              product._id
+          );
+        }
+
+        return [
+          ...currentWishlist,
+          product,
+        ];
       }
-
-      return [...currentWishlist, product];
-    });
-  };
-
-  const isInWishlist = (productId) => {
-    return wishlist.some(
-      (product) => product._id === productId
     );
   };
 
+  const isInWishlist = (
+    productId
+  ) => {
+    return wishlist.some(
+      (product) =>
+        product?._id === productId
+    );
+  };
+
+  // ================================
+  // CART COUNT
+  // ================================
+
   const cartCount = cart.reduce(
-    (total, item) => total + item.quantity,
+    (total, item) =>
+      total +
+      Number(
+        item?.quantity || 0
+      ),
     0
   );
 
+  // ================================
+  // CART TOTAL
+  // ================================
+
   const cartTotal = cart.reduce(
-    (total, item) =>
-      total +
-      (item.product.salePrice || item.product.price) *
-        item.quantity,
+    (total, item) => {
+      const product =
+        item?.product;
+
+      if (!product) {
+        return total;
+      }
+
+      const price =
+        product.salePrice != null
+          ? Number(
+              product.salePrice
+            )
+          : Number(
+              product.price || 0
+            );
+
+      return (
+        total +
+        price *
+          Number(
+            item.quantity || 0
+          )
+      );
+    },
     0
   );
 
@@ -213,8 +387,13 @@ export const StoreProvider = ({ children }) => {
   );
 };
 
+// ================================
+// useStore
+// ================================
+
 export const useStore = () => {
-  const context = useContext(StoreContext);
+  const context =
+    useContext(StoreContext);
 
   if (!context) {
     throw new Error(

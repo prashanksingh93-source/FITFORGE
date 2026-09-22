@@ -1,38 +1,139 @@
 import Product from "../models/Product.js";
 import Category from "../models/Category.js";
+import Order from "../models/Order.js";
 
-const makeSlug = (name) =>
-  name
+const createSlug = (name) => {
+  return name
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+};
 
+const normalizeArray = (value) => {
+  if (Array.isArray(value)) return value;
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
+const normalizeColors = (value) => {
+  if (Array.isArray(value)) return value;
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      return value
+        .split(",")
+        .map((name) => ({
+          name: name.trim(),
+          hex: "#000000",
+        }))
+        .filter((color) => color.name);
+    }
+  }
+
+  return [];
+};
+
+// GET ALL PRODUCTS FOR ADMIN
 export const getAllAdminProducts = async (req, res) => {
   try {
-    const products = await Product.find()
-      .populate("category")
+    const {
+      search,
+      collection,
+      category,
+      isActive,
+      stockStatus,
+    } = req.query;
+
+    const filter = {};
+
+    if (collection && collection !== "All") {
+      filter.collection = collection;
+    }
+
+    if (category && category !== "All") {
+      filter.category = category;
+    }
+
+    if (isActive !== undefined && isActive !== "") {
+      filter.isActive = isActive === "true";
+    }
+
+    if (search?.trim()) {
+      filter.$or = [
+        {
+          name: {
+            $regex: search.trim(),
+            $options: "i",
+          },
+        },
+        {
+          sku: {
+            $regex: search.trim(),
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    if (stockStatus === "out") {
+      filter.stock = 0;
+    }
+
+    if (stockStatus === "low") {
+      filter.$expr = {
+        $and: [
+          { $gt: ["$stock", 0] },
+          { $lte: ["$stock", "$lowStockThreshold"] },
+        ],
+      };
+    }
+
+    if (stockStatus === "in") {
+      filter.$expr = {
+        $gt: ["$stock", "$lowStockThreshold"],
+      };
+    }
+
+    const products = await Product.find(filter)
+      .populate("category", "name slug")
       .sort({ createdAt: -1 });
 
-    res.json({
+    res.status(200).json({
       success: true,
+      count: products.length,
       products,
     });
   } catch (error) {
-    console.error("Admin products error:", error);
+    console.error("Get admin products error:", error);
 
     res.status(500).json({
       success: false,
-      message: "Failed to fetch products",
+      message: "Failed to fetch admin products",
     });
   }
 };
 
+// GET SINGLE PRODUCT
 export const getAdminProductById = async (req, res) => {
   try {
-    const product = await Product.findById(
-      req.params.id
-    ).populate("category");
+    const product = await Product.findById(req.params.id).populate(
+      "category",
+      "name slug"
+    );
 
     if (!product) {
       return res.status(404).json({
@@ -41,12 +142,12 @@ export const getAdminProductById = async (req, res) => {
       });
     }
 
-    res.json({
+    res.status(200).json({
       success: true,
       product,
     });
   } catch (error) {
-    console.error("Admin product error:", error);
+    console.error("Get admin product error:", error);
 
     res.status(500).json({
       success: false,
@@ -55,45 +156,41 @@ export const getAdminProductById = async (req, res) => {
   }
 };
 
+// CREATE PRODUCT
 export const createProduct = async (req, res) => {
   try {
     const {
       name,
       description,
+      sku,
+      category,
+      collection,
+      gender,
       price,
       salePrice,
-      category,
-      gender,
-      collection,
-      sizes,
-      colors,
       stock,
       lowStockThreshold,
-      sku,
       material,
       fit,
       careInstructions,
-      badges,
-      images,
       isActive,
     } = req.body;
 
     if (
       !name ||
       !description ||
-      price === undefined ||
       !category ||
-      !collection
+      !collection ||
+      price === undefined
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "Name, description, price, category and collection are required",
+          "Name, description, category, collection and price are required",
       });
     }
 
-    const categoryExists =
-      await Category.findById(category);
+    const categoryExists = await Category.findById(category);
 
     if (!categoryExists) {
       return res.status(400).json({
@@ -102,54 +199,95 @@ export const createProduct = async (req, res) => {
       });
     }
 
-    const baseSlug = makeSlug(name);
+    const slug = createSlug(name);
 
-    let slug = baseSlug;
-    let counter = 1;
+    const existingSlug = await Product.findOne({ slug });
 
-    while (await Product.findOne({ slug })) {
-      slug = `${baseSlug}-${counter}`;
-      counter++;
+    if (existingSlug) {
+      return res.status(409).json({
+        success: false,
+        message: "A product with this name already exists",
+      });
+    }
+
+    if (sku?.trim()) {
+      const existingSku = await Product.findOne({
+        sku: sku.trim(),
+      });
+
+      if (existingSku) {
+        return res.status(409).json({
+          success: false,
+          message: "SKU already exists",
+        });
+      }
+    }
+
+    const numericPrice = Number(price);
+    const numericSalePrice =
+      salePrice === "" ||
+      salePrice === undefined ||
+      salePrice === null
+        ? null
+        : Number(salePrice);
+
+    if (numericPrice < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Price cannot be negative",
+      });
+    }
+
+    if (
+      numericSalePrice !== null &&
+      (numericSalePrice < 0 || numericSalePrice > numericPrice)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Sale price must be between ₹0 and the regular price",
+      });
     }
 
     const product = await Product.create({
-      name,
+      name: name.trim(),
       slug,
-      description,
-      price: Number(price),
-      salePrice:
-        salePrice === "" ||
-        salePrice === undefined
-          ? null
-          : Number(salePrice),
+      description: description.trim(),
+      sku: sku?.trim() || undefined,
+
       category,
-      gender: gender || "Unisex",
+
       collection,
-      sizes: Array.isArray(sizes) ? sizes : [],
-      colors: Array.isArray(colors) ? colors : [],
+      gender: gender || "Unisex",
+
+      price: numericPrice,
+      salePrice: numericSalePrice,
+
+      images: normalizeArray(req.body.images),
+      sizes: normalizeArray(req.body.sizes),
+      colors: normalizeColors(req.body.colors),
+
       stock: Number(stock) || 0,
       lowStockThreshold:
-        Number(lowStockThreshold) || 5,
-      sku: sku || undefined,
+        Number(lowStockThreshold) >= 0
+          ? Number(lowStockThreshold)
+          : 5,
+
       material: material || "",
       fit: fit || "",
-      careInstructions:
-        careInstructions || "",
-      badges: Array.isArray(badges)
-        ? badges
-        : [],
-      images: Array.isArray(images)
-        ? images
-        : [],
+      careInstructions: careInstructions || "",
+
+      badges: normalizeArray(req.body.badges),
+
       isActive:
-        isActive !== undefined
-          ? Boolean(isActive)
-          : true,
+        isActive === undefined
+          ? true
+          : isActive === true ||
+            isActive === "true",
     });
 
-    const populatedProduct =
-      await Product.findById(product._id)
-        .populate("category");
+    const populatedProduct = await Product.findById(
+      product._id
+    ).populate("category", "name slug");
 
     res.status(201).json({
       success: true,
@@ -161,15 +299,15 @@ export const createProduct = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Failed to create product",
+      message: error.message || "Failed to create product",
     });
   }
 };
 
+// UPDATE PRODUCT
 export const updateProduct = async (req, res) => {
   try {
-    const product =
-      await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -181,27 +319,22 @@ export const updateProduct = async (req, res) => {
     const {
       name,
       description,
+      sku,
+      category,
+      collection,
+      gender,
       price,
       salePrice,
-      category,
-      gender,
-      collection,
-      sizes,
-      colors,
       stock,
       lowStockThreshold,
-      sku,
       material,
       fit,
       careInstructions,
-      badges,
-      images,
       isActive,
     } = req.body;
 
     if (category) {
-      const categoryExists =
-        await Category.findById(category);
+      const categoryExists = await Category.findById(category);
 
       if (!categoryExists) {
         return res.status(400).json({
@@ -209,93 +342,141 @@ export const updateProduct = async (req, res) => {
           message: "Invalid category",
         });
       }
+
+      product.category = category;
     }
 
-    if (name && name !== product.name) {
-      const baseSlug = makeSlug(name);
+    if (name !== undefined) {
+      const newName = name.trim();
+      const newSlug = createSlug(newName);
 
-      let slug = baseSlug;
-      let counter = 1;
+      const existingSlug = await Product.findOne({
+        slug: newSlug,
+        _id: { $ne: product._id },
+      });
 
-      while (
-        await Product.findOne({
-          slug,
-          _id: { $ne: product._id },
-        })
-      ) {
-        slug = `${baseSlug}-${counter}`;
-        counter++;
+      if (existingSlug) {
+        return res.status(409).json({
+          success: false,
+          message: "A product with this name already exists",
+        });
       }
 
-      product.slug = slug;
-      product.name = name;
+      product.name = newName;
+      product.slug = newSlug;
     }
 
-    if (description !== undefined)
-      product.description = description;
+    if (description !== undefined) {
+      product.description = description.trim();
+    }
 
-    if (price !== undefined)
+    if (sku !== undefined) {
+      const cleanSku = sku.trim();
+
+      if (cleanSku) {
+        const existingSku = await Product.findOne({
+          sku: cleanSku,
+          _id: { $ne: product._id },
+        });
+
+        if (existingSku) {
+          return res.status(409).json({
+            success: false,
+            message: "SKU already exists",
+          });
+        }
+
+        product.sku = cleanSku;
+      } else {
+        product.sku = undefined;
+      }
+    }
+
+    if (collection !== undefined) {
+      product.collection = collection;
+    }
+
+    if (gender !== undefined) {
+      product.gender = gender;
+    }
+
+    if (price !== undefined && price !== "") {
       product.price = Number(price);
+    }
 
-    if (salePrice !== undefined) {
+    if (
+      salePrice !== undefined
+    ) {
       product.salePrice =
-        salePrice === "" ||
-        salePrice === null
+        salePrice === "" || salePrice === null
           ? null
           : Number(salePrice);
     }
 
-    if (category)
-      product.category = category;
+    if (
+      product.salePrice !== null &&
+      product.salePrice > product.price
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Sale price cannot be higher than regular price",
+      });
+    }
 
-    if (gender)
-      product.gender = gender;
+    if (stock !== undefined && stock !== "") {
+      product.stock = Math.max(0, Number(stock));
+    }
 
-    if (collection)
-      product.collection = collection;
+    if (
+      lowStockThreshold !== undefined &&
+      lowStockThreshold !== ""
+    ) {
+      product.lowStockThreshold = Math.max(
+        0,
+        Number(lowStockThreshold)
+      );
+    }
 
-    if (Array.isArray(sizes))
-      product.sizes = sizes;
+    if (req.body.images !== undefined) {
+      product.images = normalizeArray(req.body.images);
+    }
 
-    if (Array.isArray(colors))
-      product.colors = colors;
+    if (req.body.sizes !== undefined) {
+      product.sizes = normalizeArray(req.body.sizes);
+    }
 
-    if (stock !== undefined)
-      product.stock = Number(stock);
+    if (req.body.colors !== undefined) {
+      product.colors = normalizeColors(req.body.colors);
+    }
 
-    if (lowStockThreshold !== undefined)
-      product.lowStockThreshold =
-        Number(lowStockThreshold);
+    if (req.body.badges !== undefined) {
+      product.badges = normalizeArray(req.body.badges);
+    }
 
-    if (sku !== undefined)
-      product.sku = sku || undefined;
-
-    if (material !== undefined)
+    if (material !== undefined) {
       product.material = material;
+    }
 
-    if (fit !== undefined)
+    if (fit !== undefined) {
       product.fit = fit;
+    }
 
-    if (careInstructions !== undefined)
-      product.careInstructions =
-        careInstructions;
+    if (careInstructions !== undefined) {
+      product.careInstructions = careInstructions;
+    }
 
-    if (Array.isArray(badges))
-      product.badges = badges;
-
-    if (Array.isArray(images))
-      product.images = images;
-
-    if (isActive !== undefined)
-      product.isActive = Boolean(isActive);
+    if (isActive !== undefined) {
+      product.isActive =
+        isActive === true || isActive === "true";
+    }
 
     await product.save();
 
-    const updatedProduct =
-      await Product.findById(product._id)
-        .populate("category");
+    const updatedProduct = await Product.findById(
+      product._id
+    ).populate("category", "name slug");
 
-    res.json({
+    res.status(200).json({
       success: true,
       message: "Product updated successfully",
       product: updatedProduct,
@@ -305,15 +486,15 @@ export const updateProduct = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Failed to update product",
+      message: error.message || "Failed to update product",
     });
   }
 };
 
-export const deleteProduct = async (req, res) => {
+// TOGGLE PRODUCT
+export const toggleProduct = async (req, res) => {
   try {
-    const product =
-      await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -322,47 +503,63 @@ export const deleteProduct = async (req, res) => {
       });
     }
 
-    product.isActive = false;
+    product.isActive = !product.isActive;
 
     await product.save();
 
-    res.json({
+    res.status(200).json({
       success: true,
-      message: "Product removed successfully",
+      message: product.isActive
+        ? "Product activated successfully"
+        : "Product deactivated successfully",
+      product,
+    });
+  } catch (error) {
+    console.error("Toggle product error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to update product status",
+    });
+  }
+};
+
+// DELETE PRODUCT
+export const deleteProduct = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    const orderUsingProduct = await Order.exists({
+      "items.product": product._id,
+    });
+
+    if (orderUsingProduct) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This product is already used in an order. Deactivate it instead of deleting it.",
+      });
+    }
+
+    await Product.findByIdAndDelete(product._id);
+
+    res.status(200).json({
+      success: true,
+      message: "Product deleted successfully",
     });
   } catch (error) {
     console.error("Delete product error:", error);
 
     res.status(500).json({
       success: false,
-      message: "Failed to remove product",
-    });
-  }
-};
-
-export const getAdminCategories = async (
-  req,
-  res
-) => {
-  try {
-    const categories =
-      await Category.find({
-        isActive: true,
-      }).sort({ name: 1 });
-
-    res.json({
-      success: true,
-      categories,
-    });
-  } catch (error) {
-    console.error(
-      "Admin categories error:",
-      error
-    );
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch categories",
+      message: "Failed to delete product",
     });
   }
 };

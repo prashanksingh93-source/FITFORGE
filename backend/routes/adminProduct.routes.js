@@ -5,8 +5,8 @@ import {
   getAdminProductById,
   createProduct,
   updateProduct,
+  toggleProduct,
   deleteProduct,
-  getAdminCategories,
 } from "../controllers/adminProduct.controller.js";
 
 import {
@@ -19,19 +19,22 @@ const router = express.Router();
 router.use(authenticateUser);
 router.use(requireAdmin);
 
+// Get all products
 router.get("/", getAllAdminProducts);
 
-router.get(
-  "/categories",
-  getAdminCategories
-);
-
-router.get("/:id", getAdminProductById);
-
+// Create product
 router.post("/", createProduct);
 
-router.put("/:id", updateProduct);
+// Get single product
+router.get("/:id", getAdminProductById);
 
+// Update product
+router.patch("/:id", updateProduct);
+
+// Activate / deactivate product
+router.patch("/:id/toggle", toggleProduct);
+
+// Delete product
 router.delete("/:id", deleteProduct);
 
 export default router;
