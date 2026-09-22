@@ -10,29 +10,27 @@ import api from "../services/api";
 
 const StoreContext = createContext(null);
 
-// ============================================
-// LOCAL STORAGE
-// ============================================
+// ========================================
+// LOCAL STORAGE HELPERS
+// ========================================
 
-const readCart = () => {
+const getSavedCart = () => {
   try {
-    const value =
+    const savedCart =
       localStorage.getItem("fitforge-cart");
 
-    if (!value) {
+    if (!savedCart) {
       return [];
     }
 
-    const parsed = JSON.parse(value);
+    const parsedCart = JSON.parse(savedCart);
 
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed;
+    return Array.isArray(parsedCart)
+      ? parsedCart
+      : [];
   } catch (error) {
     console.error(
-      "FITFORGE: Cart read error:",
+      "Failed to load cart:",
       error
     );
 
@@ -40,25 +38,26 @@ const readCart = () => {
   }
 };
 
-const readWishlist = () => {
+const getSavedWishlist = () => {
   try {
-    const value =
+    const savedWishlist =
       localStorage.getItem(
         "fitforge-wishlist"
       );
 
-    if (!value) {
+    if (!savedWishlist) {
       return [];
     }
 
-    const parsed = JSON.parse(value);
+    const parsedWishlist =
+      JSON.parse(savedWishlist);
 
-    return Array.isArray(parsed)
-      ? parsed
+    return Array.isArray(parsedWishlist)
+      ? parsedWishlist
       : [];
   } catch (error) {
     console.error(
-      "FITFORGE: Wishlist read error:",
+      "Failed to load wishlist:",
       error
     );
 
@@ -66,19 +65,19 @@ const readWishlist = () => {
   }
 };
 
-// ============================================
-// CONTEXT
-// ============================================
+// ========================================
+// STORE PROVIDER
+// ========================================
 
-const StoreProvider = ({ children }) => {
+export const StoreProvider = ({
+  children,
+}) => {
+  // ======================================
+  // PRODUCTS
+  // ======================================
+
   const [products, setProducts] =
     useState([]);
-
-  const [cart, setCart] =
-    useState(() => readCart());
-
-  const [wishlist, setWishlist] =
-    useState(() => readWishlist());
 
   const [loading, setLoading] =
     useState(true);
@@ -86,9 +85,23 @@ const StoreProvider = ({ children }) => {
   const [error, setError] =
     useState("");
 
-  // ==========================================
+  // ======================================
+  // CART
+  // ======================================
+
+  const [cart, setCart] =
+    useState(getSavedCart);
+
+  // ======================================
+  // WISHLIST
+  // ======================================
+
+  const [wishlist, setWishlist] =
+    useState(getSavedWishlist);
+
+  // ======================================
   // FETCH PRODUCTS
-  // ==========================================
+  // ======================================
 
   const fetchProducts = useCallback(
     async () => {
@@ -108,7 +121,7 @@ const StoreProvider = ({ children }) => {
         }
       } catch (error) {
         console.error(
-          "FITFORGE: Product fetch error:",
+          "Failed to fetch products:",
           error
         );
 
@@ -129,9 +142,9 @@ const StoreProvider = ({ children }) => {
     fetchProducts();
   }, [fetchProducts]);
 
-  // ==========================================
-  // CART → LOCAL STORAGE
-  // ==========================================
+  // ======================================
+  // SAVE CART
+  // ======================================
 
   useEffect(() => {
     try {
@@ -141,15 +154,15 @@ const StoreProvider = ({ children }) => {
       );
     } catch (error) {
       console.error(
-        "FITFORGE: Cart save error:",
+        "Failed to save cart:",
         error
       );
     }
   }, [cart]);
 
-  // ==========================================
-  // WISHLIST → LOCAL STORAGE
-  // ==========================================
+  // ======================================
+  // SAVE WISHLIST
+  // ======================================
 
   useEffect(() => {
     try {
@@ -159,31 +172,50 @@ const StoreProvider = ({ children }) => {
       );
     } catch (error) {
       console.error(
-        "FITFORGE: Wishlist save error:",
+        "Failed to save wishlist:",
         error
       );
     }
   }, [wishlist]);
 
-  // ==========================================
-  // FORCE CART SYNC
-  // ==========================================
+  // ======================================
+  // REFRESH CART FROM STORAGE
+  // ======================================
 
   const refreshCartFromStorage =
     useCallback(() => {
-      const savedCart = readCart();
+      try {
+        const savedCart =
+          localStorage.getItem(
+            "fitforge-cart"
+          );
 
-      console.log(
-        "FITFORGE: Refreshing cart:",
-        savedCart
-      );
+        if (!savedCart) {
+          setCart([]);
+          return;
+        }
 
-      setCart(savedCart);
+        const parsedCart =
+          JSON.parse(savedCart);
+
+        if (Array.isArray(parsedCart)) {
+          setCart(parsedCart);
+        } else {
+          setCart([]);
+        }
+      } catch (error) {
+        console.error(
+          "Failed to refresh cart:",
+          error
+        );
+
+        setCart([]);
+      }
     }, []);
 
-  // ==========================================
+  // ======================================
   // ADD TO CART
-  // ==========================================
+  // ======================================
 
   const addToCart = (
     product,
@@ -193,14 +225,14 @@ const StoreProvider = ({ children }) => {
   ) => {
     if (!product?._id) {
       console.error(
-        "FITFORGE: Invalid product:",
+        "Invalid product:",
         product
       );
 
       return;
     }
 
-    const amount =
+    const safeQuantity =
       Math.max(
         1,
         Number(quantity) || 1
@@ -212,8 +244,8 @@ const StoreProvider = ({ children }) => {
           ? currentCart
           : [];
 
-      const existingIndex =
-        safeCart.findIndex(
+      const existingItem =
+        safeCart.find(
           (item) =>
             item?.product?._id ===
               product._id &&
@@ -221,48 +253,53 @@ const StoreProvider = ({ children }) => {
             item.color === color
         );
 
-      let newCart;
+      let updatedCart;
 
-      if (existingIndex !== -1) {
-        newCart = safeCart.map(
-          (item, index) => {
-            if (
-              index !== existingIndex
-            ) {
+      if (existingItem) {
+        updatedCart =
+          safeCart.map(
+            (item) => {
+              if (
+                item?.product?._id ===
+                  product._id &&
+                item.size === size &&
+                item.color === color
+              ) {
+                const currentQuantity =
+                  Number(
+                    item.quantity || 0
+                  );
+
+                const stock =
+                  Number(
+                    product.stock || 0
+                  );
+
+                const requestedQuantity =
+                  currentQuantity +
+                  safeQuantity;
+
+                const finalQuantity =
+                  stock > 0
+                    ? Math.min(
+                        requestedQuantity,
+                        stock
+                      )
+                    : requestedQuantity;
+
+                return {
+                  ...item,
+                  product,
+                  quantity:
+                    finalQuantity,
+                  size,
+                  color,
+                };
+              }
+
               return item;
             }
-
-            const currentQuantity =
-              Number(
-                item.quantity || 0
-              );
-
-            const stock =
-              Number(
-                product.stock || 0
-              );
-
-            const requestedQuantity =
-              currentQuantity + amount;
-
-            const finalQuantity =
-              stock > 0
-                ? Math.min(
-                    requestedQuantity,
-                    stock
-                  )
-                : requestedQuantity;
-
-            return {
-              ...item,
-              product,
-              quantity:
-                finalQuantity,
-              size,
-              color,
-            };
-          }
-        );
+          );
       } else {
         const stock =
           Number(
@@ -271,10 +308,13 @@ const StoreProvider = ({ children }) => {
 
         const finalQuantity =
           stock > 0
-            ? Math.min(amount, stock)
-            : amount;
+            ? Math.min(
+                safeQuantity,
+                stock
+              )
+            : safeQuantity;
 
-        newCart = [
+        updatedCart = [
           ...safeCart,
           {
             product,
@@ -286,24 +326,23 @@ const StoreProvider = ({ children }) => {
         ];
       }
 
-      // Save immediately.
       localStorage.setItem(
         "fitforge-cart",
-        JSON.stringify(newCart)
+        JSON.stringify(updatedCart)
       );
 
       console.log(
-        "FITFORGE: Cart updated:",
-        newCart
+        "FITFORGE CART UPDATED:",
+        updatedCart
       );
 
-      return newCart;
+      return updatedCart;
     });
   };
 
-  // ==========================================
+  // ======================================
   // REMOVE FROM CART
-  // ==========================================
+  // ======================================
 
   const removeFromCart = (
     productId,
@@ -311,7 +350,7 @@ const StoreProvider = ({ children }) => {
     color = ""
   ) => {
     setCart((currentCart) => {
-      const newCart =
+      const updatedCart =
         currentCart.filter(
           (item) =>
             !(
@@ -324,16 +363,16 @@ const StoreProvider = ({ children }) => {
 
       localStorage.setItem(
         "fitforge-cart",
-        JSON.stringify(newCart)
+        JSON.stringify(updatedCart)
       );
 
-      return newCart;
+      return updatedCart;
     });
   };
 
-  // ==========================================
-  // UPDATE QUANTITY
-  // ==========================================
+  // ======================================
+  // UPDATE CART QUANTITY
+  // ======================================
 
   const updateCartQuantity = (
     productId,
@@ -354,7 +393,7 @@ const StoreProvider = ({ children }) => {
     }
 
     setCart((currentCart) => {
-      const newCart =
+      const updatedCart =
         currentCart.map(
           (item) => {
             if (
@@ -390,16 +429,16 @@ const StoreProvider = ({ children }) => {
 
       localStorage.setItem(
         "fitforge-cart",
-        JSON.stringify(newCart)
+        JSON.stringify(updatedCart)
       );
 
-      return newCart;
+      return updatedCart;
     });
   };
 
-  // ==========================================
+  // ======================================
   // CLEAR CART
-  // ==========================================
+  // ======================================
 
   const clearCart = () => {
     localStorage.removeItem(
@@ -409,9 +448,9 @@ const StoreProvider = ({ children }) => {
     setCart([]);
   };
 
-  // ==========================================
+  // ======================================
   // WISHLIST
-  // ==========================================
+  // ======================================
 
   const toggleWishlist = (product) => {
     if (!product?._id) {
@@ -439,9 +478,9 @@ const StoreProvider = ({ children }) => {
     });
   };
 
-  // ==========================================
+  // ======================================
   // WISHLIST CHECK
-  // ==========================================
+  // ======================================
 
   const isInWishlist = (
     productId
@@ -452,9 +491,9 @@ const StoreProvider = ({ children }) => {
     );
   };
 
-  // ==========================================
-  // MOVE WISHLIST → CART
-  // ==========================================
+  // ======================================
+  // MOVE TO CART
+  // ======================================
 
   const moveToCart = (
     product,
@@ -485,9 +524,9 @@ const StoreProvider = ({ children }) => {
     );
   };
 
-  // ==========================================
+  // ======================================
   // CART COUNT
-  // ==========================================
+  // ======================================
 
   const cartCount = cart.reduce(
     (total, item) =>
@@ -498,9 +537,9 @@ const StoreProvider = ({ children }) => {
     0
   );
 
-  // ==========================================
+  // ======================================
   // CART TOTAL
-  // ==========================================
+  // ======================================
 
   const cartTotal = cart.reduce(
     (total, item) => {
@@ -520,35 +559,34 @@ const StoreProvider = ({ children }) => {
               product.price || 0
             );
 
-      const quantity =
-        Number(
-          item.quantity || 0
-        );
-
       return (
         total +
-        price * quantity
+        price *
+          Number(
+            item.quantity || 0
+          )
       );
     },
     0
   );
 
-  // ==========================================
+  // ======================================
   // PROVIDER
-  // ==========================================
+  // ======================================
 
   return (
     <StoreContext.Provider
       value={{
-        // PRODUCTS
         products,
         loading,
         error,
         fetchProducts,
 
-        // CART
         cart,
+
+        // Compatibility with Checkout
         cartItems: cart,
+
         cartCount,
         cartTotal,
 
@@ -558,7 +596,6 @@ const StoreProvider = ({ children }) => {
         clearCart,
         refreshCartFromStorage,
 
-        // WISHLIST
         wishlist,
         toggleWishlist,
         isInWishlist,
@@ -570,9 +607,9 @@ const StoreProvider = ({ children }) => {
   );
 };
 
-// ============================================
-// HOOK
-// ============================================
+// ========================================
+// USE STORE
+// ========================================
 
 export const useStore = () => {
   const context =
