@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
+
 import {
   Minus,
   Plus,
@@ -10,18 +11,20 @@ import {
 import { useStore } from "../context/StoreContext";
 
 export default function Cart() {
-  const store = useStore();
-
-  console.log("CART PAGE STORE:", store);
-  console.log("CART PAGE CART:", store?.cart);
-
   const {
     cart = [],
     cartCount = 0,
     cartTotal = 0,
     removeFromCart,
     updateCartQuantity,
-  } = store;
+    refreshCartFromStorage,
+  } = useStore();
+
+  useEffect(() => {
+    refreshCartFromStorage();
+  }, [refreshCartFromStorage]);
+
+  console.log("FINAL CART PAGE:", cart);
 
   if (!Array.isArray(cart) || cart.length === 0) {
     return (
@@ -62,11 +65,9 @@ export default function Cart() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-12">
-        {/* CART ITEMS */}
-
         <div className="lg:col-span-2 space-y-6">
-          {cart.map((item) => {
-            const product = item.product;
+          {cart.map((item, index) => {
+            const product = item?.product;
 
             if (!product) {
               return null;
@@ -86,7 +87,7 @@ export default function Cart() {
 
             return (
               <div
-                key={`${product._id}-${item.size}-${item.color}`}
+                key={`${product._id}-${item.size}-${item.color}-${index}`}
                 className="border-b pb-6 flex gap-6"
               >
                 <img
@@ -119,7 +120,10 @@ export default function Cart() {
                       )}
 
                       <p className="font-medium mt-3">
-                        ₹{price.toLocaleString("en-IN")}
+                        ₹
+                        {price.toLocaleString(
+                          "en-IN"
+                        )}
                       </p>
                     </div>
 
@@ -142,6 +146,7 @@ export default function Cart() {
                     <div className="flex items-center border">
                       <button
                         type="button"
+                        disabled={quantity <= 1}
                         onClick={() =>
                           updateCartQuantity(
                             product._id,
@@ -150,7 +155,7 @@ export default function Cart() {
                             item.color
                           )
                         }
-                        className="p-2"
+                        className="p-2 disabled:opacity-30"
                       >
                         <Minus className="w-4" />
                       </button>
@@ -161,6 +166,10 @@ export default function Cart() {
 
                       <button
                         type="button"
+                        disabled={
+                          quantity >=
+                          Number(product.stock || 0)
+                        }
                         onClick={() =>
                           updateCartQuantity(
                             product._id,
@@ -169,7 +178,7 @@ export default function Cart() {
                             item.color
                           )
                         }
-                        className="p-2"
+                        className="p-2 disabled:opacity-30"
                       >
                         <Plus className="w-4" />
                       </button>
@@ -179,7 +188,9 @@ export default function Cart() {
                       ₹
                       {(
                         price * quantity
-                      ).toLocaleString("en-IN")}
+                      ).toLocaleString(
+                        "en-IN"
+                      )}
                     </p>
                   </div>
                 </div>
@@ -187,8 +198,6 @@ export default function Cart() {
             );
           })}
         </div>
-
-        {/* SUMMARY */}
 
         <div className="border p-8 h-fit">
           <h2 className="text-2xl font-black">
@@ -202,6 +211,7 @@ export default function Cart() {
 
           <div className="flex justify-between mt-4">
             <span>Subtotal</span>
+
             <span>
               ₹
               {Number(cartTotal).toLocaleString(
