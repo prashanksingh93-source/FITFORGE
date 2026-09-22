@@ -9,66 +9,57 @@ import api from "../services/api";
 
 const StoreContext = createContext(null);
 
+const getSavedCart = () => {
+  try {
+    const saved = localStorage.getItem("fitforge-cart");
+
+    if (!saved) {
+      return [];
+    }
+
+    const parsed = JSON.parse(saved);
+
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error("Cart load error:", error);
+    return [];
+  }
+};
+
+const getSavedWishlist = () => {
+  try {
+    const saved =
+      localStorage.getItem("fitforge-wishlist");
+
+    if (!saved) {
+      return [];
+    }
+
+    const parsed = JSON.parse(saved);
+
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error("Wishlist load error:", error);
+    return [];
+  }
+};
+
 export const StoreProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
 
-  const [cart, setCart] = useState(() => {
-    try {
-      const savedCart =
-        localStorage.getItem("fitforge-cart");
+  const [cart, setCart] = useState(getSavedCart);
 
-      if (!savedCart) {
-        return [];
-      }
-
-      const parsedCart = JSON.parse(savedCart);
-
-      return Array.isArray(parsedCart)
-        ? parsedCart
-        : [];
-    } catch (error) {
-      console.error(
-        "Failed to load cart:",
-        error
-      );
-
-      return [];
-    }
-  });
-
-  const [wishlist, setWishlist] = useState(() => {
-    try {
-      const savedWishlist =
-        localStorage.getItem(
-          "fitforge-wishlist"
-        );
-
-      if (!savedWishlist) {
-        return [];
-      }
-
-      const parsedWishlist =
-        JSON.parse(savedWishlist);
-
-      return Array.isArray(parsedWishlist)
-        ? parsedWishlist
-        : [];
-    } catch (error) {
-      console.error(
-        "Failed to load wishlist:",
-        error
-      );
-
-      return [];
-    }
-  });
+  const [wishlist, setWishlist] = useState(
+    getSavedWishlist
+  );
 
   const [loading, setLoading] = useState(true);
+
   const [error, setError] = useState("");
 
-  // ================================
+  // ============================
   // FETCH PRODUCTS
-  // ================================
+  // ============================
 
   const fetchProducts = async () => {
     try {
@@ -91,9 +82,7 @@ export const StoreProvider = ({ children }) => {
         error
       );
 
-      setError(
-        "Unable to load products."
-      );
+      setError("Unable to load products.");
 
       setProducts([]);
     } finally {
@@ -105,25 +94,20 @@ export const StoreProvider = ({ children }) => {
     fetchProducts();
   }, []);
 
-  // ================================
-  // SAVE CART
-  // ================================
+  // ============================
+  // CART STORAGE
+  // ============================
 
   useEffect(() => {
     localStorage.setItem(
       "fitforge-cart",
       JSON.stringify(cart)
     );
-
-    console.log(
-      "FITFORGE CART:",
-      cart
-    );
   }, [cart]);
 
-  // ================================
-  // SAVE WISHLIST
-  // ================================
+  // ============================
+  // WISHLIST STORAGE
+  // ============================
 
   useEffect(() => {
     localStorage.setItem(
@@ -132,9 +116,9 @@ export const StoreProvider = ({ children }) => {
     );
   }, [wishlist]);
 
-  // ================================
+  // ============================
   // ADD TO CART
-  // ================================
+  // ============================
 
   const addToCart = (
     product,
@@ -144,26 +128,22 @@ export const StoreProvider = ({ children }) => {
   ) => {
     if (!product?._id) {
       console.error(
-        "Cannot add product without _id:",
+        "Invalid product:",
         product
       );
 
       return;
     }
 
-    console.log(
-      "ADDING TO CART:",
-      product.name
-    );
-
-    setCart((currentCart) => {
-      const safeCart =
-        Array.isArray(currentCart)
-          ? currentCart
-          : [];
+    setCart((previousCart) => {
+      const currentCart = Array.isArray(
+        previousCart
+      )
+        ? previousCart
+        : [];
 
       const existingItem =
-        safeCart.find(
+        currentCart.find(
           (item) =>
             item?.product?._id ===
               product._id &&
@@ -172,7 +152,7 @@ export const StoreProvider = ({ children }) => {
         );
 
       if (existingItem) {
-        return safeCart.map(
+        return currentCart.map(
           (item) =>
             item?.product?._id ===
               product._id &&
@@ -182,42 +162,38 @@ export const StoreProvider = ({ children }) => {
                   ...item,
                   quantity:
                     Number(
-                      item.quantity || 0
+                      item.quantity
                     ) +
-                    Number(
-                      quantity || 1
-                    ),
+                    Number(quantity),
                 }
               : item
         );
       }
 
-      const newItem = {
-        product,
-        quantity:
-          Number(quantity) || 1,
-        size,
-        color,
-      };
-
       return [
-        ...safeCart,
-        newItem,
+        ...currentCart,
+        {
+          product,
+          quantity:
+            Number(quantity) || 1,
+          size,
+          color,
+        },
       ];
     });
   };
 
-  // ================================
+  // ============================
   // REMOVE FROM CART
-  // ================================
+  // ============================
 
   const removeFromCart = (
     productId,
     size = "",
     color = ""
   ) => {
-    setCart((currentCart) =>
-      currentCart.filter(
+    setCart((previousCart) =>
+      previousCart.filter(
         (item) =>
           !(
             item?.product?._id ===
@@ -229,9 +205,9 @@ export const StoreProvider = ({ children }) => {
     );
   };
 
-  // ================================
-  // UPDATE QUANTITY
-  // ================================
+  // ============================
+  // UPDATE CART
+  // ============================
 
   const updateCartQuantity = (
     productId,
@@ -246,8 +222,8 @@ export const StoreProvider = ({ children }) => {
       return;
     }
 
-    setCart((currentCart) =>
-      currentCart.map(
+    setCart((previousCart) =>
+      previousCart.map(
         (item) =>
           item?.product?._id ===
             productId &&
@@ -255,86 +231,76 @@ export const StoreProvider = ({ children }) => {
           item.color === color
             ? {
                 ...item,
-                quantity:
-                  newQuantity,
+                quantity: newQuantity,
               }
             : item
       )
     );
   };
 
-  // ================================
+  // ============================
   // CLEAR CART
-  // ================================
+  // ============================
 
   const clearCart = () => {
     setCart([]);
   };
 
-  // ================================
+  // ============================
   // WISHLIST
-  // ================================
+  // ============================
 
   const toggleWishlist = (product) => {
     if (!product?._id) {
       return;
     }
 
-    setWishlist(
-      (currentWishlist) => {
-        const exists =
-          currentWishlist.some(
-            (item) =>
-              item?._id ===
-              product._id
-          );
+    setWishlist((previousWishlist) => {
+      const exists =
+        previousWishlist.some(
+          (item) =>
+            item?._id === product._id
+        );
 
-        if (exists) {
-          return currentWishlist.filter(
-            (item) =>
-              item?._id !==
-              product._id
-          );
-        }
-
-        return [
-          ...currentWishlist,
-          product,
-        ];
+      if (exists) {
+        return previousWishlist.filter(
+          (item) =>
+            item?._id !== product._id
+        );
       }
-    );
+
+      return [
+        ...previousWishlist,
+        product,
+      ];
+    });
   };
 
-  const isInWishlist = (
-    productId
-  ) => {
+  const isInWishlist = (productId) => {
     return wishlist.some(
       (product) =>
         product?._id === productId
     );
   };
 
-  // ================================
+  // ============================
   // CART COUNT
-  // ================================
+  // ============================
 
   const cartCount = cart.reduce(
     (total, item) =>
       total +
-      Number(
-        item?.quantity || 0
-      ),
+      Number(item?.quantity || 0),
     0
   );
 
-  // ================================
+  // ============================
   // CART TOTAL
-  // ================================
+  // ============================
 
   const cartTotal = cart.reduce(
     (total, item) => {
-      const product =
-        item?.product;
+      const product = item?.product;
 
       if (!product) {
         return total;
@@ -342,12 +308,8 @@ export const StoreProvider = ({ children }) => {
 
       const price =
         product.salePrice != null
-          ? Number(
-              product.salePrice
-            )
-          : Number(
-              product.price || 0
-            );
+          ? Number(product.salePrice)
+          : Number(product.price || 0);
 
       return (
         total +
@@ -387,9 +349,9 @@ export const StoreProvider = ({ children }) => {
   );
 };
 
-// ================================
-// useStore
-// ================================
+// ============================
+// USE STORE
+// ============================
 
 export const useStore = () => {
   const context =
