@@ -1,151 +1,196 @@
 import crypto from "crypto";
+import mongoose from "mongoose";
+
+import Order from "../models/Order.js";
+import Product from "../models/Product.js";
 import razorpay from "../services/razorpay.service.js";
+
+/*
+====================================================
+CREATE RAZORPAY ORDER
+POST /api/payments/razorpay/order
+====================================================
+*/
 
 export const createRazorpayOrder = async (req, res) => {
   try {
+    const { orderId } = req.body;
+
     console.log("\n========== RAZORPAY CREATE ORDER ==========");
 
-    console.log("User:", req.user?._id);
-    console.log("Request body:", req.body);
-
-    const { amount } = req.body;
-
-    if (!amount) {
+    if (!orderId) {
       return res.status(400).json({
         success: false,
-        message: "Amount is required",
+        message: "Order ID is required",
       });
     }
 
-    const numericAmount = Number(amount);
-
-    if (
-      !Number.isFinite(numericAmount) ||
-      numericAmount <= 0
-    ) {
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid amount",
+        message: "Invalid order ID",
       });
     }
 
-    console.log(
-      "Amount received:",
-      numericAmount
-    );
+    /*
+    --------------------------------------------
+    Find order belonging to logged-in user
+    --------------------------------------------
+    */
 
-    const amountInPaise = Math.round(
-      numericAmount * 100
-    );
+    const order = await Order.findOne({
+      _id: orderId,
+      user: req.user._id,
+    });
 
-    console.log(
-      "Amount in paise:",
-      amountInPaise
-    );
-
-    console.log(
-      "Razorpay Key ID:",
-      process.env.RAZORPAY_KEY_ID
-    );
-
-    console.log(
-      "Razorpay secret loaded:",
-      Boolean(
-        process.env.RAZORPAY_KEY_SECRET
-      )
-    );
-
-    if (!process.env.RAZORPAY_KEY_ID) {
-      return res.status(500).json({
+    if (!order) {
+      return res.status(404).json({
         success: false,
-        message:
-          "RAZORPAY_KEY_ID is missing from backend .env",
+        message: "Order not found",
       });
     }
 
-    if (!process.env.RAZORPAY_KEY_SECRET) {
-      return res.status(500).json({
+    console.log("User:", req.user._id);
+    console.log("FITFORGE order:", order.orderNumber);
+    console.log("Order total:", order.totalAmount);
+
+    /*
+    --------------------------------------------
+    Don't create another Razorpay order if
+    payment is already completed
+    --------------------------------------------
+    */
+
+    if (order.paymentStatus === "Paid") {
+      return res.status(400).json({
         success: false,
-        message:
-          "RAZORPAY_KEY_SECRET is missing from backend .env",
+        message: "This order has already been paid",
       });
     }
 
-    const options = {
+    /*
+    --------------------------------------------
+    Validate amount
+    --------------------------------------------
+    */
+
+    const amount = Number(order.totalAmount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order amount",
+      });
+    }
+
+    /*
+    --------------------------------------------
+    Convert INR to paise
+    ₹4499 → 449900 paise
+    --------------------------------------------
+    */
+
+    const amountInPaise = Math.round(amount * 100);
+
+    console.log("Amount INR:", amount);
+    console.log("Amount paise:", amountInPaise);
+
+    /*
+    --------------------------------------------
+    Create Razorpay order
+    --------------------------------------------
+    */
+
+    const razorpayOrder = await razorpay.orders.create({
       amount: amountInPaise,
       currency: "INR",
-      receipt: `fitforge_${Date.now()}`,
-    };
 
-    console.log(
-      "Sending order to Razorpay:",
-      options
-    );
+      receipt:
+        order.orderNumber ||
+        `FITFORGE_${Date.now()}`,
 
-    const order =
-      await razorpay.orders.create(options);
+      notes: {
+        fitforgeOrderId: order._id.toString(),
+
+        orderNumber:
+          order.orderNumber || "",
+
+        userId: req.user._id.toString(),
+      },
+    });
+
+    /*
+    --------------------------------------------
+    Save Razorpay order ID temporarily
+    --------------------------------------------
+    */
+
+    order.paymentId = razorpayOrder.id;
+
+    await order.save();
 
     console.log(
       "Razorpay order created:",
-      order.id
+      razorpayOrder.id
     );
 
     console.log(
-      "==========================================\n"
+      "============================================\n"
     );
 
     return res.status(200).json({
       success: true,
+
       message:
         "Razorpay order created successfully",
-      order,
+
+      razorpayOrder,
+
       keyId:
         process.env.RAZORPAY_KEY_ID,
     });
   } catch (error) {
-    console.error(
-      "\n========== RAZORPAY ERROR =========="
+    console.log(
+      "\n========== RAZORPAY CREATE ERROR =========="
     );
 
-    console.error(
-      "Error name:",
-      error.name
+    console.log("Name:", error?.name);
+    console.log("Message:", error?.message);
+    console.log("Status:", error?.statusCode);
+    console.log(
+      "Description:",
+      error?.error?.description
     );
 
-    console.error(
-      "Error message:",
-      error.message
-    );
-
-    console.error(
-      "Error status:",
-      error.statusCode
-    );
-
-    console.error(
-      "Error description:",
-      error.description
-    );
-
-    console.error(
-      "Full error:",
+    console.log(
+      "Error object:",
       error
     );
 
-    console.error(
-      "====================================\n"
+    console.log(
+      "============================================\n"
     );
 
-    return res.status(500).json({
+    return res.status(
+      error?.statusCode || 500
+    ).json({
       success: false,
+
       message:
-        error.description ||
-        error.error?.description ||
-        error.message ||
-        "Razorpay order creation failed",
+        error?.error?.description ||
+        error?.message ||
+        "Failed to create Razorpay order",
     });
   }
 };
+
+
+/*
+====================================================
+VERIFY RAZORPAY PAYMENT
+POST /api/payments/razorpay/verify
+====================================================
+*/
 
 export const verifyRazorpayPayment = async (
   req,
@@ -156,67 +201,371 @@ export const verifyRazorpayPayment = async (
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
+      orderId,
     } = req.body;
+
+    console.log(
+      "\n========== RAZORPAY PAYMENT VERIFY =========="
+    );
+
+    console.log("Razorpay Order ID:", razorpay_order_id);
+    console.log(
+      "Razorpay Payment ID:",
+      razorpay_payment_id
+    );
+
+    /*
+    --------------------------------------------
+    Validate required fields
+    --------------------------------------------
+    */
 
     if (
       !razorpay_order_id ||
       !razorpay_payment_id ||
-      !razorpay_signature
+      !razorpay_signature ||
+      !orderId
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "Missing Razorpay payment details",
+          "Payment verification data is incomplete",
       });
     }
 
-    if (!process.env.RAZORPAY_KEY_SECRET) {
-      return res.status(500).json({
+    /*
+    --------------------------------------------
+    Validate MongoDB order ID
+    --------------------------------------------
+    */
+
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({
         success: false,
-        message:
-          "Razorpay secret is not configured",
+        message: "Invalid order ID",
       });
     }
 
-    const body =
-      `${razorpay_order_id}|${razorpay_payment_id}`;
+    /*
+    --------------------------------------------
+    Find customer's order
+    --------------------------------------------
+    */
 
-    const expectedSignature =
+    const order = await Order.findOne({
+      _id: orderId,
+      user: req.user._id,
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    /*
+    --------------------------------------------
+    Prevent duplicate payment processing
+    --------------------------------------------
+    */
+
+    if (order.paymentStatus === "Paid") {
+      return res.status(200).json({
+        success: true,
+        message: "Payment already verified",
+        order,
+      });
+    }
+
+    /*
+    --------------------------------------------
+    Verify Razorpay signature
+    --------------------------------------------
+
+    Razorpay signature:
+
+    HMAC SHA256
+    razorpay_order_id + "|" + razorpay_payment_id
+
+    --------------------------------------------
+    */
+
+    const generatedSignature =
       crypto
         .createHmac(
           "sha256",
           process.env.RAZORPAY_KEY_SECRET
         )
-        .update(body)
+        .update(
+          `${razorpay_order_id}|${razorpay_payment_id}`
+        )
         .digest("hex");
 
+    /*
+    --------------------------------------------
+    Timing-safe signature comparison
+    --------------------------------------------
+    */
+
+    const generatedBuffer =
+      Buffer.from(generatedSignature);
+
+    const receivedBuffer =
+      Buffer.from(razorpay_signature);
+
     if (
-      expectedSignature !==
-      razorpay_signature
+      generatedBuffer.length !==
+      receivedBuffer.length
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid Razorpay payment signature",
+        message: "Invalid payment signature",
+      });
+    }
+
+    const signatureValid =
+      crypto.timingSafeEqual(
+        generatedBuffer,
+        receivedBuffer
+      );
+
+    if (!signatureValid) {
+      console.log(
+        "❌ Invalid Razorpay signature"
+      );
+
+      return res.status(400).json({
+        success: false,
+        message: "Payment verification failed",
+      });
+    }
+
+    console.log(
+      "✅ Razorpay signature verified"
+    );
+
+    /*
+    ====================================================
+    IMPORTANT
+    ====================================================
+
+    Payment is now cryptographically verified.
+
+    Only NOW should we reduce product stock.
+    ====================================================
+    */
+
+    for (const item of order.items) {
+      const product = await Product.findById(
+        item.product
+      );
+
+      if (!product) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "A product in this order no longer exists",
+        });
+      }
+
+      /*
+      --------------------------------------------
+      Check stock again.
+      --------------------------------------------
+      */
+
+      if (product.stock < item.quantity) {
+        return res.status(400).json({
+          success: false,
+          message:
+            `${product.name} is no longer available in the requested quantity`,
+        });
+      }
+    }
+
+    /*
+    ====================================================
+    REDUCE STOCK
+    ====================================================
+    */
+
+    for (const item of order.items) {
+      const product = await Product.findById(
+        item.product
+      );
+
+      if (!product) {
+        continue;
+      }
+
+      product.stock =
+        product.stock - item.quantity;
+
+      await product.save();
+
+      console.log(
+        `Stock updated: ${product.name} → ${product.stock}`
+      );
+    }
+
+    /*
+    ====================================================
+    UPDATE ORDER PAYMENT
+    ====================================================
+    */
+
+    order.paymentStatus = "Paid";
+
+    order.paymentId =
+      razorpay_payment_id;
+
+    /*
+    --------------------------------------------
+    Save Razorpay payment details if your
+    Order schema supports these fields.
+    --------------------------------------------
+    */
+
+    if (
+      "razorpayOrderId" in order
+    ) {
+      order.razorpayOrderId =
+        razorpay_order_id;
+    }
+
+    if (
+      "razorpayPaymentId" in order
+    ) {
+      order.razorpayPaymentId =
+        razorpay_payment_id;
+    }
+
+    if (
+      "razorpaySignature" in order
+    ) {
+      order.razorpaySignature =
+        razorpay_signature;
+    }
+
+    /*
+    --------------------------------------------
+    Confirm order
+    --------------------------------------------
+    */
+
+    if (
+      !order.orderStatus ||
+      order.orderStatus === "Pending"
+    ) {
+      order.orderStatus = "Confirmed";
+    }
+
+    await order.save();
+
+    console.log(
+      "✅ Payment verified successfully"
+    );
+
+    console.log(
+      "Order:",
+      order.orderNumber
+    );
+
+    console.log(
+      "============================================\n"
+    );
+
+    return res.status(200).json({
+      success: true,
+
+      message:
+        "Payment verified successfully",
+
+      order,
+    });
+  } catch (error) {
+    console.error(
+      "\n========== PAYMENT VERIFY ERROR =========="
+    );
+
+    console.error(error);
+
+    console.error(
+      "============================================\n"
+    );
+
+    return res.status(500).json({
+      success: false,
+
+      message:
+        error.message ||
+        "Payment verification failed",
+    });
+  }
+};
+
+
+/*
+====================================================
+GET PAYMENT STATUS
+Optional helper endpoint
+====================================================
+*/
+
+export const getPaymentStatus = async (
+  req,
+  res
+) => {
+  try {
+    const { orderId } = req.params;
+
+    if (
+      !mongoose.Types.ObjectId.isValid(orderId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID",
+      });
+    }
+
+    const order = await Order.findOne({
+      _id: orderId,
+      user: req.user._id,
+    }).select(
+      "orderNumber totalAmount paymentStatus paymentId orderStatus"
+    );
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
       });
     }
 
     return res.status(200).json({
       success: true,
-      message:
-        "Payment verified successfully",
+      paymentStatus:
+        order.paymentStatus,
+
+      paymentId:
+        order.paymentId,
+
+      orderStatus:
+        order.orderStatus,
+
+      order,
     });
   } catch (error) {
     console.error(
-      "Razorpay verification error:",
+      "Get payment status error:",
       error
     );
 
     return res.status(500).json({
       success: false,
       message:
-        error.message ||
-        "Payment verification failed",
+        "Failed to get payment status",
     });
   }
 };

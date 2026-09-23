@@ -1,19 +1,19 @@
+import User from "../models/User.js";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
-import User from "../models/User.js";
 
-export const getDashboardStats = async (
-  req,
-  res
-) => {
+export const getDashboardStats = async (req, res) => {
   try {
     const [
       totalProducts,
       totalCustomers,
       totalOrders,
-      revenueResult,
       pendingOrders,
+      deliveredOrders,
+      cancelledOrders,
       lowStockProducts,
+      outOfStockProducts,
+      revenueResult,
     ] = await Promise.all([
       Product.countDocuments({
         isActive: true,
@@ -25,62 +25,73 @@ export const getDashboardStats = async (
 
       Order.countDocuments(),
 
-      Order.aggregate([
-        {
-          $match: {
-            orderStatus: {
-              $ne: "Cancelled",
-            },
-            paymentStatus: {
-              $in: ["Paid", "Pending"],
-            },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            total: {
-              $sum: "$totalAmount",
-            },
-          },
-        },
-      ]),
+      Order.countDocuments({
+        orderStatus: "Pending",
+      }),
 
       Order.countDocuments({
-        orderStatus: {
-          $in: [
-            "Pending",
-            "Confirmed",
-            "Processing",
-          ],
+        orderStatus: "Delivered",
+      }),
+
+      Order.countDocuments({
+        orderStatus: "Cancelled",
+      }),
+
+      Product.countDocuments({
+        isActive: true,
+        stock: {
+          $gt: 0,
+          $lte: 5,
         },
       }),
 
       Product.countDocuments({
         isActive: true,
-        $expr: {
-          $lte: [
-            "$stock",
-            "$lowStockThreshold",
-          ],
-        },
+        stock: 0,
       }),
+
+      Order.aggregate([
+        {
+          $match: {
+            paymentStatus: "Paid",
+            orderStatus: {
+              $ne: "Cancelled",
+            },
+          },
+        },
+
+        {
+          $group: {
+            _id: null,
+
+            totalRevenue: {
+              $sum: "$totalAmount",
+            },
+          },
+        },
+      ]),
     ]);
 
-    const revenue =
+    const totalRevenue =
       revenueResult.length > 0
-        ? revenueResult[0].total
+        ? revenueResult[0].totalRevenue
         : 0;
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
+
       stats: {
         totalProducts,
         totalCustomers,
         totalOrders,
-        revenue,
+        totalRevenue,
+
         pendingOrders,
+        deliveredOrders,
+        cancelledOrders,
+
         lowStockProducts,
+        outOfStockProducts,
       },
     });
   } catch (error) {
@@ -89,80 +100,11 @@ export const getDashboardStats = async (
       error
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
+
       message:
-        "Failed to fetch dashboard statistics",
-    });
-  }
-};
-
-export const getRecentOrders = async (
-  req,
-  res
-) => {
-  try {
-    const orders = await Order.find()
-      .populate(
-        "user",
-        "fullName email"
-      )
-      .sort({
-        createdAt: -1,
-      })
-      .limit(10);
-
-    res.status(200).json({
-      success: true,
-      orders,
-    });
-  } catch (error) {
-    console.error(
-      "Recent orders error:",
-      error
-    );
-
-    res.status(500).json({
-      success: false,
-      message:
-        "Failed to fetch recent orders",
-    });
-  }
-};
-
-export const getLowStockProducts = async (
-  req,
-  res
-) => {
-  try {
-    const products = await Product.find({
-      isActive: true,
-      $expr: {
-        $lte: [
-          "$stock",
-          "$lowStockThreshold",
-        ],
-      },
-    })
-      .populate("category")
-      .sort({
-        stock: 1,
-      });
-
-    res.status(200).json({
-      success: true,
-      products,
-    });
-  } catch (error) {
-    console.error(
-      "Low stock products error:",
-      error
-    );
-
-    res.status(500).json({
-      success: false,
-      message:
-        "Failed to fetch low stock products",
+        "Failed to load dashboard statistics",
     });
   }
 };
