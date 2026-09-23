@@ -114,7 +114,7 @@ export default function Wishlist() {
 
         <Link
           to="/shop"
-          className="mt-8 bg-black text-white px-8 py-4 font-bold flex items-center gap-3"
+          className="mt-8 bg-[oklch(45%_0.017_213.2)] text-white px-8 py-4 font-bold flex items-center gap-3"
         >
           EXPLORE SHOP
           <ArrowRight className="w-4" />

@@ -1,4 +1,3 @@
-
 import {
   BrowserRouter,
   Navigate,
@@ -53,6 +52,8 @@ import AdminPayments from "./admin/AdminPayments";
 // =====================================================
 
 import { useAuth } from "./context/AuthContext";
+import ScrollToTop from "./components/ScrollToTop";
+import AnimatedRoutes from "./components/AnimatedRoutes";
 
 // =====================================================
 // LOADING SCREEN
@@ -97,119 +98,184 @@ const ProtectedRoute = ({ children }) => {
 const App = () => {
   return (
     <BrowserRouter>
+      {/* ===============================================
+          GLOBAL SCROLL
+      ================================================ */}
+      <ScrollToTop />
+
+      {/* ===============================================
+          TOASTER
+      ================================================ */}
       <Toaster
         position="top-right"
         richColors
         closeButton
       />
 
+      {/* ===============================================
+          CUSTOMER LAYOUT
+          
+          IMPORTANT:
+          Layout stays OUTSIDE AnimatedRoutes.
+          
+          Therefore:
+          Navbar does NOT animate.
+      ================================================ */}
+
       <Routes>
-        {/* =================================================
-            CUSTOMER WEBSITE
-        ================================================== */}
-
         <Route element={<Layout />}>
-          {/* HOME */}
-          <Route
-            path="/"
-            element={<Home />}
-          />
 
-          {/* SHOP */}
-          <Route
-            path="/shop"
-            element={<Shop />}
-          />
+          {/* ===========================================
+              CUSTOMER PAGE ANIMATION
+              
+              Navbar remains static because Layout
+              is outside AnimatedRoutes.
+          ============================================ */}
 
-          {/* PERFORMANCE
-              DO NOT CHANGE
-          */}
-          <Route
-            path="/performance"
-            element={
-              <Shop collection="Performance" />
-            }
-          />
+          <Route element={<AnimatedRoutes />}>
 
-          {/* LUXURY
-              DO NOT CHANGE
-          */}
-          <Route
-            path="/luxury"
-            element={
-              <Shop collection="Luxury" />
-            }
-          />
+            {/* =========================================
+                HOME
+            ========================================== */}
 
-          {/* PRODUCT DETAILS */}
-          <Route
-            path="/product/:id"
-            element={<ProductDetails />}
-          />
+            <Route
+              path="/"
+              element={<Home />}
+            />
 
-          {/* CART */}
-          <Route
-            path="/cart"
-            element={<Cart />}
-          />
+            {/* =========================================
+                SHOP
+            ========================================== */}
 
-          {/* WISHLIST */}
-          <Route
-            path="/wishlist"
-            element={<Wishlist />}
-          />
+            <Route
+              path="/shop"
+              element={<Shop />}
+            />
 
-          {/* LOGIN */}
-          <Route
-            path="/login"
-            element={<Login />}
-          />
+            {/* =========================================
+                PERFORMANCE
 
-          {/* REGISTER */}
-          <Route
-            path="/register"
-            element={<Register />}
-          />
+                DO NOT CHANGE
+            ========================================== */}
 
-          {/* PROFILE */}
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <Profile />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/performance"
+              element={
+                <Shop collection="Performance" />
+              }
+            />
 
-          {/* ORDERS */}
-          <Route
-            path="/orders"
-            element={
-              <ProtectedRoute>
-                <Orders />
-              </ProtectedRoute>
-            }
-          />
+            {/* =========================================
+                LUXURY
 
-          {/* ORDER DETAILS */}
-          <Route
-            path="/orders/:id"
-            element={
-              <ProtectedRoute>
-                <OrderDetails />
-              </ProtectedRoute>
-            }
-          />
+                DO NOT CHANGE
+            ========================================== */}
 
-          {/* CHECKOUT */}
-          <Route
-            path="/checkout"
-            element={
-              <ProtectedRoute>
-                <Checkout />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/luxury"
+              element={
+                <Shop collection="Luxury" />
+              }
+            />
+
+            {/* =========================================
+                PRODUCT DETAILS
+            ========================================== */}
+
+            <Route
+              path="/product/:id"
+              element={<ProductDetails />}
+            />
+
+            {/* =========================================
+                CART
+            ========================================== */}
+
+            <Route
+              path="/cart"
+              element={<Cart />}
+            />
+
+            {/* =========================================
+                WISHLIST
+            ========================================== */}
+
+            <Route
+              path="/wishlist"
+              element={<Wishlist />}
+            />
+
+            {/* =========================================
+                LOGIN
+            ========================================== */}
+
+            <Route
+              path="/login"
+              element={<Login />}
+            />
+
+            {/* =========================================
+                REGISTER
+            ========================================== */}
+
+            <Route
+              path="/register"
+              element={<Register />}
+            />
+
+            {/* =========================================
+                PROFILE
+            ========================================== */}
+
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* =========================================
+                ORDERS
+            ========================================== */}
+
+            <Route
+              path="/orders"
+              element={
+                <ProtectedRoute>
+                  <Orders />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* =========================================
+                ORDER DETAILS
+            ========================================== */}
+
+            <Route
+              path="/orders/:id"
+              element={
+                <ProtectedRoute>
+                  <OrderDetails />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* =========================================
+                CHECKOUT
+            ========================================== */}
+
+            <Route
+              path="/checkout"
+              element={
+                <ProtectedRoute>
+                  <Checkout />
+                </ProtectedRoute>
+              }
+            />
+
+          </Route>
         </Route>
 
         {/* =================================================
@@ -247,6 +313,8 @@ const App = () => {
           }
         />
 
+        {/* ADD PRODUCT */}
+
         <Route
           path="/admin/products/add"
           element={
@@ -255,6 +323,8 @@ const App = () => {
             </AdminRoute>
           }
         />
+
+        {/* EDIT PRODUCT */}
 
         <Route
           path="/admin/products/edit/:id"
@@ -291,6 +361,8 @@ const App = () => {
           }
         />
 
+        {/* ADMIN ORDER DETAILS */}
+
         <Route
           path="/admin/orders/:id"
           element={
@@ -312,6 +384,8 @@ const App = () => {
             </AdminRoute>
           }
         />
+
+        {/* ADMIN CUSTOMER DETAILS */}
 
         <Route
           path="/admin/customers/:id"
@@ -361,7 +435,6 @@ const App = () => {
           }
         />
 
-
         {/* =================================================
             ADMIN REVIEWS
         ================================================== */}
@@ -388,22 +461,31 @@ const App = () => {
           }
         />
 
+        {/* =================================================
+            ADMIN SETTINGS
+        ================================================== */}
+
         <Route
-  path="/admin/settings"
-  element={
-    <AdminRoute>
-      <AdminSettings />
-    </AdminRoute>
-  }
-/>
-<Route
-  path="/admin/payments"
-  element={
-    <AdminRoute>
-      <AdminPayments />
-    </AdminRoute>
-  }
-/>
+          path="/admin/settings"
+          element={
+            <AdminRoute>
+              <AdminSettings />
+            </AdminRoute>
+          }
+        />
+
+        {/* =================================================
+            ADMIN PAYMENTS
+        ================================================== */}
+
+        <Route
+          path="/admin/payments"
+          element={
+            <AdminRoute>
+              <AdminPayments />
+            </AdminRoute>
+          }
+        />
 
         {/* =================================================
             404

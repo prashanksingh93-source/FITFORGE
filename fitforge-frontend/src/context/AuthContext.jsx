@@ -40,6 +40,20 @@ export const AuthProvider = ({ children }) => {
     );
 
     if (response.data.success) {
+      /*
+       * Save JWT token if backend returns one.
+       */
+      const token =
+        response.data.token ||
+        response.data.accessToken;
+
+      if (token) {
+        localStorage.setItem(
+          "fitforge-token",
+          token
+        );
+      }
+
       setUser(response.data.user);
     }
 
@@ -53,6 +67,23 @@ export const AuthProvider = ({ children }) => {
     );
 
     if (response.data.success) {
+      /*
+       * Get token from backend response.
+       *
+       * Your api.js expects this exact localStorage key:
+       * "fitforge-token"
+       */
+      const token =
+        response.data.token ||
+        response.data.accessToken;
+
+      if (token) {
+        localStorage.setItem(
+          "fitforge-token",
+          token
+        );
+      }
+
       setUser(response.data.user);
     }
 
@@ -63,6 +94,13 @@ export const AuthProvider = ({ children }) => {
     try {
       await api.post("/auth/logout");
     } finally {
+      /*
+       * Remove the same token used by api.js.
+       */
+      localStorage.removeItem(
+        "fitforge-token"
+      );
+
       setUser(null);
     }
   };
@@ -96,3 +134,4 @@ export const useAuth = () => {
 };
 
 export default AuthContext;
+

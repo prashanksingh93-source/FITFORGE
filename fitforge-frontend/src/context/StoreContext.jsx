@@ -16,7 +16,8 @@ import {
 const StoreContext = createContext(null);
 
 const CART_STORAGE_KEY = "fitforge-cart";
-const WISHLIST_STORAGE_KEY = "fitforge-wishlist";
+const WISHLIST_STORAGE_KEY =
+  "fitforge-wishlist";
 
 /*
 |--------------------------------------------------------------------------
@@ -24,15 +25,20 @@ const WISHLIST_STORAGE_KEY = "fitforge-wishlist";
 |--------------------------------------------------------------------------
 */
 
-const getLocalStorage = (key, fallback) => {
+const getLocalStorage = (
+  key,
+  fallback
+) => {
   try {
-    const value = localStorage.getItem(key);
+    const value =
+      localStorage.getItem(key);
 
     if (!value) {
       return fallback;
     }
 
-    const parsed = JSON.parse(value);
+    const parsed =
+      JSON.parse(value);
 
     return parsed ?? fallback;
   } catch (error) {
@@ -45,7 +51,10 @@ const getLocalStorage = (key, fallback) => {
   }
 };
 
-const saveLocalStorage = (key, value) => {
+const saveLocalStorage = (
+  key,
+  value
+) => {
   try {
     localStorage.setItem(
       key,
@@ -63,38 +72,51 @@ const saveLocalStorage = (key, value) => {
 |--------------------------------------------------------------------------
 | PRODUCT PRICE
 |--------------------------------------------------------------------------
-|
-| This price is only for displaying cart information.
-|
-| Final checkout price MUST always be calculated
-| and verified by the backend.
-|
-|--------------------------------------------------------------------------
 */
 
-const getProductPrice = (product) => {
+const getProductPrice = (
+  product
+) => {
   if (
     product?.salePrice !== null &&
     product?.salePrice !== undefined &&
     Number(product.salePrice) >= 0
   ) {
-    return Number(product.salePrice);
+    return Number(
+      product.salePrice
+    );
   }
 
-  return Number(product?.price || 0);
+  return Number(
+    product?.price || 0
+  );
 };
 
 /*
 |--------------------------------------------------------------------------
-| AUTHENTICATION CHECK
+| AUTHENTICATION
+|--------------------------------------------------------------------------
+|
+| Your api.js already uses:
+|
+| withCredentials: true
+|
+| Therefore the HTTP-only cookie can authenticate
+| requests.
+|
+| fitforge-token is also supported if your backend
+| returns a JWT to the frontend.
 |--------------------------------------------------------------------------
 */
 
-const hasAuthenticationToken = () => {
-  return Boolean(
-    localStorage.getItem("fitforge-token")
-  );
-};
+const hasAuthenticationToken =
+  () => {
+    return Boolean(
+      localStorage.getItem(
+        "fitforge-token"
+      )
+    );
+  };
 
 /*
 |--------------------------------------------------------------------------
@@ -102,18 +124,23 @@ const hasAuthenticationToken = () => {
 |--------------------------------------------------------------------------
 */
 
-export const StoreProvider = ({ children }) => {
+export const StoreProvider = ({
+  children,
+}) => {
   /*
   |--------------------------------------------------------------------------
   | PRODUCTS
   |--------------------------------------------------------------------------
   */
 
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] =
+    useState([]);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
   /*
   |--------------------------------------------------------------------------
@@ -121,12 +148,13 @@ export const StoreProvider = ({ children }) => {
   |--------------------------------------------------------------------------
   */
 
-  const [cart, setCart] = useState(() =>
-    getLocalStorage(
-      CART_STORAGE_KEY,
-      []
-    )
-  );
+  const [cart, setCart] =
+    useState(() =>
+      getLocalStorage(
+        CART_STORAGE_KEY,
+        []
+      )
+    );
 
   const [cartLoading, setCartLoading] =
     useState(false);
@@ -140,8 +168,10 @@ export const StoreProvider = ({ children }) => {
   const [wishlist, setWishlist] =
     useState([]);
 
-  const [wishlistLoading, setWishlistLoading] =
-    useState(false);
+  const [
+    wishlistLoading,
+    setWishlistLoading,
+  ] = useState(false);
 
   /*
   |--------------------------------------------------------------------------
@@ -149,18 +179,23 @@ export const StoreProvider = ({ children }) => {
   |--------------------------------------------------------------------------
   */
 
-  const fetchProducts = useCallback(
-    async () => {
+  const fetchProducts =
+    useCallback(async () => {
       try {
         setLoading(true);
         setError("");
 
         const response =
-          await api.get("/products");
+          await api.get(
+            "/products"
+          );
 
-        if (response.data?.success) {
+        if (
+          response.data?.success
+        ) {
           setProducts(
-            response.data.products || []
+            response.data.products ||
+              []
           );
         } else {
           setProducts([]);
@@ -174,19 +209,18 @@ export const StoreProvider = ({ children }) => {
         setProducts([]);
 
         setError(
-          error.response?.data?.message ||
+          error.response?.data
+            ?.message ||
             "Unable to load products."
         );
       } finally {
         setLoading(false);
       }
-    },
-    []
-  );
+    }, []);
 
   /*
   |--------------------------------------------------------------------------
-  | LOAD PRODUCTS ON APP START
+  | LOAD PRODUCTS
   |--------------------------------------------------------------------------
   */
 
@@ -196,16 +230,18 @@ export const StoreProvider = ({ children }) => {
 
   /*
   |--------------------------------------------------------------------------
-  | GET DATABASE CART
+  | FETCH CART
   |--------------------------------------------------------------------------
   */
 
-  const fetchCart = useCallback(
-    async () => {
+  const fetchCart =
+    useCallback(async () => {
       /*
-       * Guest users don't have a database cart.
+       * Guest users.
        */
-      if (!hasAuthenticationToken()) {
+      if (
+        !hasAuthenticationToken()
+      ) {
         const savedCart =
           getLocalStorage(
             CART_STORAGE_KEY,
@@ -225,12 +261,16 @@ export const StoreProvider = ({ children }) => {
         setCartLoading(true);
 
         const response =
-          await api.get("/cart");
+          await api.get(
+            "/cart"
+          );
 
-        if (response.data?.success) {
+        if (
+          response.data?.success
+        ) {
           const serverItems =
-            response.data.cart?.items ||
-            [];
+            response.data.cart
+              ?.items || [];
 
           setCart(serverItems);
 
@@ -244,21 +284,14 @@ export const StoreProvider = ({ children }) => {
           "Failed to fetch cart:",
           error
         );
-
-        /*
-         * Don't destroy the user's local cart
-         * if the backend is temporarily unavailable.
-         */
       } finally {
         setCartLoading(false);
       }
-    },
-    []
-  );
+    }, []);
 
   /*
   |--------------------------------------------------------------------------
-  | LOAD DATABASE CART WHEN USER LOGS IN
+  | LOAD CART
   |--------------------------------------------------------------------------
   */
 
@@ -268,7 +301,7 @@ export const StoreProvider = ({ children }) => {
 
   /*
   |--------------------------------------------------------------------------
-  | KEEP LOCAL CART IN SYNC
+  | SAVE CART
   |--------------------------------------------------------------------------
   */
 
@@ -281,17 +314,118 @@ export const StoreProvider = ({ children }) => {
 
   /*
   |--------------------------------------------------------------------------
+  | NORMALIZE WISHLIST RESPONSE
+  |--------------------------------------------------------------------------
+  |
+  | Different backend responses can look like:
+  |
+  | { success: true, wishlist: { products: [] } }
+  |
+  | { success: true, wishlist: [] }
+  |
+  | { success: true, products: [] }
+  |
+  | { success: true, data: { products: [] } }
+  |
+  |--------------------------------------------------------------------------
+  */
+
+  const normalizeWishlist =
+    useCallback((response) => {
+      if (!response) {
+        return [];
+      }
+
+      /*
+       * Most likely structure:
+       *
+       * response.wishlist.products
+       */
+      if (
+        Array.isArray(
+          response.wishlist?.products
+        )
+      ) {
+        return response.wishlist
+          .products;
+      }
+
+      /*
+       * wishlist itself is an array.
+       */
+      if (
+        Array.isArray(
+          response.wishlist
+        )
+      ) {
+        return response.wishlist;
+      }
+
+      /*
+       * products directly.
+       */
+      if (
+        Array.isArray(
+          response.products
+        )
+      ) {
+        return response.products;
+      }
+
+      /*
+       * data.products
+       */
+      if (
+        Array.isArray(
+          response.data?.products
+        )
+      ) {
+        return response.data
+          .products;
+      }
+
+      /*
+       * data.wishlist.products
+       */
+      if (
+        Array.isArray(
+          response.data?.wishlist
+            ?.products
+        )
+      ) {
+        return response.data
+          .wishlist.products;
+      }
+
+      /*
+       * data.wishlist
+       */
+      if (
+        Array.isArray(
+          response.data?.wishlist
+        )
+      ) {
+        return response.data
+          .wishlist;
+      }
+
+      return [];
+    }, []);
+
+  /*
+  |--------------------------------------------------------------------------
   | FETCH WISHLIST
   |--------------------------------------------------------------------------
   */
 
-  const fetchWishlist = useCallback(
-    async () => {
+  const fetchWishlist =
+    useCallback(async () => {
       /*
-       * Guest wishlist
+       * Guest wishlist.
        */
-
-      if (!hasAuthenticationToken()) {
+      if (
+        !hasAuthenticationToken()
+      ) {
         const savedWishlist =
           getLocalStorage(
             WISHLIST_STORAGE_KEY,
@@ -299,7 +433,9 @@ export const StoreProvider = ({ children }) => {
           );
 
         setWishlist(
-          Array.isArray(savedWishlist)
+          Array.isArray(
+            savedWishlist
+          )
             ? savedWishlist
             : []
         );
@@ -307,22 +443,18 @@ export const StoreProvider = ({ children }) => {
         return;
       }
 
-      /*
-       * Authenticated wishlist
-       */
-
       try {
         setWishlistLoading(true);
 
         const response =
           await getWishlist();
 
-        if (response?.success) {
-          setWishlist(
-            response.wishlist?.products ||
-              []
+        const products =
+          normalizeWishlist(
+            response
           );
-        }
+
+        setWishlist(products);
       } catch (error) {
         console.error(
           "Failed to fetch wishlist:",
@@ -330,16 +462,14 @@ export const StoreProvider = ({ children }) => {
         );
 
         /*
-         * Keep an empty wishlist rather than
-         * crashing the application.
+         * Don't overwrite an existing
+         * wishlist unnecessarily.
          */
         setWishlist([]);
       } finally {
         setWishlistLoading(false);
       }
-    },
-    []
-  );
+    }, [normalizeWishlist]);
 
   /*
   |--------------------------------------------------------------------------
@@ -353,12 +483,14 @@ export const StoreProvider = ({ children }) => {
 
   /*
   |--------------------------------------------------------------------------
-  | KEEP GUEST WISHLIST IN LOCAL STORAGE
+  | SAVE GUEST WISHLIST
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
-    if (!hasAuthenticationToken()) {
+    if (
+      !hasAuthenticationToken()
+    ) {
       saveLocalStorage(
         WISHLIST_STORAGE_KEY,
         wishlist
@@ -368,7 +500,7 @@ export const StoreProvider = ({ children }) => {
 
   /*
   |--------------------------------------------------------------------------
-  | ADD PRODUCT TO CART
+  | ADD TO CART
   |--------------------------------------------------------------------------
   */
 
@@ -384,20 +516,19 @@ export const StoreProvider = ({ children }) => {
       );
     }
 
-    const safeQuantity = Math.max(
-      1,
-      Number(quantity) || 1
-    );
+    const safeQuantity =
+      Math.max(
+        1,
+        Number(quantity) || 1
+      );
 
     /*
-     * ---------------------------------------------------------
      * AUTHENTICATED USER
-     * ---------------------------------------------------------
-     *
-     * Database is the source of truth.
      */
 
-    if (hasAuthenticationToken()) {
+    if (
+      hasAuthenticationToken()
+    ) {
       try {
         setCartLoading(true);
 
@@ -414,7 +545,9 @@ export const StoreProvider = ({ children }) => {
             }
           );
 
-        if (!response.data?.success) {
+        if (
+          !response.data?.success
+        ) {
           throw new Error(
             response.data?.message ||
               "Unable to add product to cart"
@@ -422,8 +555,8 @@ export const StoreProvider = ({ children }) => {
         }
 
         const serverCart =
-          response.data.cart?.items ||
-          [];
+          response.data.cart
+            ?.items || [];
 
         setCart(serverCart);
 
@@ -446,104 +579,106 @@ export const StoreProvider = ({ children }) => {
     }
 
     /*
-     * ---------------------------------------------------------
      * GUEST USER
-     * ---------------------------------------------------------
-     *
-     * Guest cart is stored locally.
      */
 
-    setCart((currentCart) => {
-      const safeCart =
-        Array.isArray(currentCart)
-          ? currentCart
-          : [];
+    setCart(
+      (currentCart) => {
+        const safeCart =
+          Array.isArray(
+            currentCart
+          )
+            ? currentCart
+            : [];
 
-      const existingItem =
-        safeCart.find(
-          (item) =>
-            item?.product?._id ===
-              product._id &&
-            item.size === size &&
-            item.color === color
-        );
+        const existingItem =
+          safeCart.find(
+            (item) =>
+              item?.product?._id ===
+                product._id &&
+              item.size === size &&
+              item.color === color
+          );
 
-      if (existingItem) {
-        return safeCart.map((item) => {
-          if (
-            item?.product?._id ===
-              product._id &&
-            item.size === size &&
-            item.color === color
-          ) {
-            const currentQuantity =
-              Number(
-                item.quantity || 0
-              );
+        if (existingItem) {
+          return safeCart.map(
+            (item) => {
+              if (
+                item?.product?._id !==
+                  product._id ||
+                item.size !== size ||
+                item.color !== color
+              ) {
+                return item;
+              }
 
-            const requestedQuantity =
-              currentQuantity +
-              safeQuantity;
+              const currentQuantity =
+                Number(
+                  item.quantity || 0
+                );
 
-            const stock = Number(
-              product.stock || 0
-            );
+              const requestedQuantity =
+                currentQuantity +
+                safeQuantity;
 
-            return {
-              ...item,
-              product,
-              size,
-              color,
-              quantity:
-                stock > 0
-                  ? Math.min(
-                      requestedQuantity,
-                      stock
-                    )
-                  : requestedQuantity,
-            };
-          }
+              const stock =
+                Number(
+                  product.stock || 0
+                );
 
-          return item;
-        });
+              return {
+                ...item,
+                product,
+                size,
+                color,
+                quantity:
+                  stock > 0
+                    ? Math.min(
+                        requestedQuantity,
+                        stock
+                      )
+                    : requestedQuantity,
+              };
+            }
+          );
+        }
+
+        const stock =
+          Number(
+            product.stock || 0
+          );
+
+        const finalQuantity =
+          stock > 0
+            ? Math.min(
+                safeQuantity,
+                stock
+              )
+            : safeQuantity;
+
+        return [
+          ...safeCart,
+          {
+            _id:
+              `guest-${product._id}-${Date.now()}`,
+
+            product,
+
+            quantity:
+              finalQuantity,
+
+            size,
+
+            color,
+          },
+        ];
       }
-
-      const stock = Number(
-        product.stock || 0
-      );
-
-      const finalQuantity =
-        stock > 0
-          ? Math.min(
-              safeQuantity,
-              stock
-            )
-          : safeQuantity;
-
-      return [
-        ...safeCart,
-        {
-          /*
-           * Temporary local ID for guest cart.
-           */
-          _id:
-            `guest-${product._id}-${Date.now()}`,
-
-          product,
-
-          quantity:
-            finalQuantity,
-
-          size,
-
-          color,
-        },
-      ];
-    });
+    );
 
     return {
       success: true,
-      message: "Product added to cart",
+      message:
+        "Product added to cart",
     };
   };
 
@@ -553,80 +688,85 @@ export const StoreProvider = ({ children }) => {
   |--------------------------------------------------------------------------
   */
 
-  const removeFromCart = async (
-    productId,
-    size = "",
-    color = "",
-    cartItemId = null
-  ) => {
-    /*
-     * Authenticated user
-     */
+  const removeFromCart =
+    async (
+      productId,
+      size = "",
+      color = "",
+      cartItemId = null
+    ) => {
+      /*
+       * AUTHENTICATED USER
+       */
 
-    if (
-      hasAuthenticationToken() &&
-      cartItemId
-    ) {
-      try {
-        setCartLoading(true);
+      if (
+        hasAuthenticationToken() &&
+        cartItemId
+      ) {
+        try {
+          setCartLoading(true);
 
-        const response =
-          await api.delete(
-            `/cart/${cartItemId}`
+          const response =
+            await api.delete(
+              `/cart/${cartItemId}`
+            );
+
+          if (
+            !response.data?.success
+          ) {
+            throw new Error(
+              response.data?.message ||
+                "Unable to remove cart item"
+            );
+          }
+
+          const serverCart =
+            response.data.cart
+              ?.items || [];
+
+          setCart(serverCart);
+
+          saveLocalStorage(
+            CART_STORAGE_KEY,
+            serverCart
           );
 
-        if (!response.data?.success) {
-          throw new Error(
-            response.data?.message ||
-              "Unable to remove cart item"
+          return response.data;
+        } catch (error) {
+          console.error(
+            "Remove cart item failed:",
+            error
           );
+
+          throw error;
+        } finally {
+          setCartLoading(false);
         }
-
-        const serverCart =
-          response.data.cart?.items ||
-          [];
-
-        setCart(serverCart);
-
-        saveLocalStorage(
-          CART_STORAGE_KEY,
-          serverCart
-        );
-
-        return response.data;
-      } catch (error) {
-        console.error(
-          "Remove cart item failed:",
-          error
-        );
-
-        throw error;
-      } finally {
-        setCartLoading(false);
       }
-    }
 
-    /*
-     * Guest user
-     */
+      /*
+       * GUEST USER
+       */
 
-    setCart((currentCart) =>
-      currentCart.filter(
-        (item) =>
-          !(
-            item?.product?._id ===
-              productId &&
-            item.size === size &&
-            item.color === color
+      setCart(
+        (currentCart) =>
+          currentCart.filter(
+            (item) =>
+              !(
+                item?.product?._id ===
+                  productId &&
+                item.size === size &&
+                item.color === color
+              )
           )
-      )
-    );
+      );
 
-    return {
-      success: true,
-      message: "Item removed from cart",
+      return {
+        success: true,
+        message:
+          "Item removed from cart",
+      };
     };
-  };
 
   /*
   |--------------------------------------------------------------------------
@@ -634,117 +774,124 @@ export const StoreProvider = ({ children }) => {
   |--------------------------------------------------------------------------
   */
 
-  const updateCartQuantity = async (
-    productId,
-    quantity,
-    size = "",
-    color = "",
-    cartItemId = null
-  ) => {
-    const newQuantity =
-      Number(quantity);
+  const updateCartQuantity =
+    async (
+      productId,
+      quantity,
+      size = "",
+      color = "",
+      cartItemId = null
+    ) => {
+      const newQuantity =
+        Number(quantity);
 
-    if (
-      !Number.isInteger(
-        newQuantity
-      ) ||
-      newQuantity < 1
-    ) {
-      return;
-    }
-
-    /*
-     * Authenticated user
-     */
-
-    if (
-      hasAuthenticationToken() &&
-      cartItemId
-    ) {
-      try {
-        setCartLoading(true);
-
-        const response =
-          await api.patch(
-            `/cart/${cartItemId}`,
-            {
-              quantity:
-                newQuantity,
-            }
-          );
-
-        if (!response.data?.success) {
-          throw new Error(
-            response.data?.message ||
-              "Unable to update cart"
-          );
-        }
-
-        const serverCart =
-          response.data.cart?.items ||
-          [];
-
-        setCart(serverCart);
-
-        saveLocalStorage(
-          CART_STORAGE_KEY,
-          serverCart
-        );
-
-        return response.data;
-      } catch (error) {
-        console.error(
-          "Update cart failed:",
-          error
-        );
-
-        throw error;
-      } finally {
-        setCartLoading(false);
+      if (
+        !Number.isInteger(
+          newQuantity
+        ) ||
+        newQuantity < 1
+      ) {
+        return;
       }
-    }
 
-    /*
-     * Guest user
-     */
+      /*
+       * AUTHENTICATED USER
+       */
 
-    setCart((currentCart) =>
-      currentCart.map((item) => {
-        if (
-          item?.product?._id !==
-            productId ||
-          item.size !== size ||
-          item.color !== color
-        ) {
-          return item;
-        }
+      if (
+        hasAuthenticationToken() &&
+        cartItemId
+      ) {
+        try {
+          setCartLoading(true);
 
-        const stock =
-          Number(
-            item.product?.stock || 0
+          const response =
+            await api.patch(
+              `/cart/${cartItemId}`,
+              {
+                quantity:
+                  newQuantity,
+              }
+            );
+
+          if (
+            !response.data?.success
+          ) {
+            throw new Error(
+              response.data?.message ||
+                "Unable to update cart"
+            );
+          }
+
+          const serverCart =
+            response.data.cart
+              ?.items || [];
+
+          setCart(serverCart);
+
+          saveLocalStorage(
+            CART_STORAGE_KEY,
+            serverCart
           );
 
-        const finalQuantity =
-          stock > 0
-            ? Math.min(
-                newQuantity,
-                stock
-              )
-            : newQuantity;
+          return response.data;
+        } catch (error) {
+          console.error(
+            "Update cart failed:",
+            error
+          );
 
-        return {
-          ...item,
-          quantity:
-            finalQuantity,
-        };
-      })
-    );
+          throw error;
+        } finally {
+          setCartLoading(false);
+        }
+      }
 
-    return {
-      success: true,
-      message: "Cart updated",
+      /*
+       * GUEST USER
+       */
+
+      setCart(
+        (currentCart) =>
+          currentCart.map(
+            (item) => {
+              if (
+                item?.product?._id !==
+                  productId ||
+                item.size !== size ||
+                item.color !== color
+              ) {
+                return item;
+              }
+
+              const stock =
+                Number(
+                  item.product
+                    ?.stock || 0
+                );
+
+              const finalQuantity =
+                stock > 0
+                  ? Math.min(
+                      newQuantity,
+                      stock
+                    )
+                  : newQuantity;
+
+              return {
+                ...item,
+                quantity:
+                  finalQuantity,
+              };
+            }
+          )
+      );
+
+      return {
+        success: true,
+        message: "Cart updated",
+      };
     };
-  };
 
   /*
   |--------------------------------------------------------------------------
@@ -752,51 +899,50 @@ export const StoreProvider = ({ children }) => {
   |--------------------------------------------------------------------------
   */
 
-  const clearCart = async () => {
-    /*
-     * Authenticated user
-     */
+  const clearCart =
+    async () => {
+      if (
+        hasAuthenticationToken()
+      ) {
+        try {
+          setCartLoading(true);
 
-    if (hasAuthenticationToken()) {
-      try {
-        setCartLoading(true);
+          const response =
+            await api.delete(
+              "/cart"
+            );
 
-        const response =
-          await api.delete("/cart");
-
-        if (!response.data?.success) {
-          throw new Error(
-            response.data?.message ||
-              "Unable to clear cart"
+          if (
+            !response.data?.success
+          ) {
+            throw new Error(
+              response.data?.message ||
+                "Unable to clear cart"
+            );
+          }
+        } catch (error) {
+          console.error(
+            "Clear cart failed:",
+            error
           );
+
+          throw error;
+        } finally {
+          setCartLoading(false);
         }
-      } catch (error) {
-        console.error(
-          "Clear cart failed:",
-          error
-        );
-
-        throw error;
-      } finally {
-        setCartLoading(false);
       }
-    }
 
-    /*
-     * Clear local state regardless.
-     */
+      setCart([]);
 
-    setCart([]);
+      localStorage.removeItem(
+        CART_STORAGE_KEY
+      );
 
-    localStorage.removeItem(
-      CART_STORAGE_KEY
-    );
-
-    return {
-      success: true,
-      message: "Cart cleared",
+      return {
+        success: true,
+        message: "Cart cleared",
+      };
     };
-  };
 
   /*
   |--------------------------------------------------------------------------
@@ -806,9 +952,10 @@ export const StoreProvider = ({ children }) => {
 
   const refreshCartFromStorage =
     useCallback(async () => {
-      if (hasAuthenticationToken()) {
+      if (
+        hasAuthenticationToken()
+      ) {
         await fetchCart();
-
         return;
       }
 
@@ -831,100 +978,130 @@ export const StoreProvider = ({ children }) => {
   |--------------------------------------------------------------------------
   */
 
-  const toggleWishlist = async (
-    product
-  ) => {
-    if (!product?._id) {
-      return;
-    }
+  const toggleWishlist =
+    async (product) => {
+      if (!product?._id) {
+        throw new Error(
+          "Invalid product"
+        );
+      }
 
-    /*
-     * Authenticated user
-     *
-     * MongoDB is the source of truth.
-     */
+      /*
+       * AUTHENTICATED USER
+       */
 
-    if (hasAuthenticationToken()) {
-      try {
-        setWishlistLoading(true);
-
-        const response =
-          await toggleWishlistApi(
-            product._id
+      if (
+        hasAuthenticationToken()
+      ) {
+        try {
+          setWishlistLoading(
+            true
           );
 
-        if (!response?.success) {
-          throw new Error(
-            response?.message ||
-              "Unable to update wishlist"
+          /*
+           * Toggle in MongoDB.
+           */
+          const response =
+            await toggleWishlistApi(
+              product._id
+            );
+
+          if (
+            !response?.success
+          ) {
+            throw new Error(
+              response?.message ||
+                "Unable to update wishlist"
+            );
+          }
+
+          /*
+           * IMPORTANT:
+           *
+           * Do NOT trust the shape of the
+           * toggle response to update the UI.
+           *
+           * Fetch the actual wishlist from
+           * MongoDB immediately after the
+           * toggle.
+           */
+          const wishlistResponse =
+            await getWishlist();
+
+          const products =
+            normalizeWishlist(
+              wishlistResponse
+            );
+
+          setWishlist(products);
+
+          return {
+            ...response,
+            wishlist: {
+              products,
+            },
+          };
+        } catch (error) {
+          console.error(
+            "Wishlist update failed:",
+            error
+          );
+
+          throw error;
+        } finally {
+          setWishlistLoading(
+            false
           );
         }
-
-        setWishlist(
-          response.wishlist?.products ||
-            []
-        );
-
-        return response;
-      } catch (error) {
-        console.error(
-          "Wishlist update failed:",
-          error
-        );
-
-        throw error;
-      } finally {
-        setWishlistLoading(false);
       }
-    }
 
-    /*
-     * Guest user
-     */
+      /*
+       * GUEST USER
+       */
 
-    let added = false;
+      let added = false;
 
-    setWishlist(
-      (currentWishlist) => {
-        const safeWishlist =
-          Array.isArray(
-            currentWishlist
-          )
-            ? currentWishlist
-            : [];
+      setWishlist(
+        (currentWishlist) => {
+          const safeWishlist =
+            Array.isArray(
+              currentWishlist
+            )
+              ? currentWishlist
+              : [];
 
-        const exists =
-          safeWishlist.some(
-            (item) =>
-              item?._id ===
-              product._id
-          );
+          const exists =
+            safeWishlist.some(
+              (item) =>
+                item?._id ===
+                product._id
+            );
 
-        if (exists) {
-          return safeWishlist.filter(
-            (item) =>
-              item?._id !==
-              product._id
-          );
+          if (exists) {
+            return safeWishlist.filter(
+              (item) =>
+                item?._id !==
+                product._id
+            );
+          }
+
+          added = true;
+
+          return [
+            ...safeWishlist,
+            product,
+          ];
         }
+      );
 
-        added = true;
-
-        return [
-          ...safeWishlist,
-          product,
-        ];
-      }
-    );
-
-    return {
-      success: true,
-      added,
-      message: added
-        ? "Added to wishlist"
-        : "Removed from wishlist",
+      return {
+        success: true,
+        added,
+        message: added
+          ? "Added to wishlist"
+          : "Removed from wishlist",
+      };
     };
-  };
 
   /*
   |--------------------------------------------------------------------------
@@ -932,15 +1109,14 @@ export const StoreProvider = ({ children }) => {
   |--------------------------------------------------------------------------
   */
 
-  const isInWishlist = (
-    productId
-  ) => {
-    return wishlist.some(
-      (product) =>
-        product?._id ===
-        productId
-    );
-  };
+  const isInWishlist =
+    (productId) => {
+      return wishlist.some(
+        (product) =>
+          String(product?._id) ===
+          String(productId)
+      );
+    };
 
   /*
   |--------------------------------------------------------------------------
@@ -948,48 +1124,45 @@ export const StoreProvider = ({ children }) => {
   |--------------------------------------------------------------------------
   */
 
-  const moveToCart = async (
-    product,
-    quantity = 1,
-    size = "",
-    color = ""
-  ) => {
-    if (!product?._id) {
-      return;
-    }
-
-    const selectedSize =
-      size ||
-      product.sizes?.[0] ||
-      "";
-
-    const selectedColor =
-      color ||
-      product.colors?.[0]
-        ?.name ||
-      "";
-
-    await addToCart(
+  const moveToCart =
+    async (
       product,
-      quantity,
-      selectedSize,
-      selectedColor
-    );
+      quantity = 1,
+      size = "",
+      color = ""
+    ) => {
+      if (!product?._id) {
+        return;
+      }
 
-    /*
-     * Remove from wishlist
-     */
+      const selectedSize =
+        size ||
+        product.sizes?.[0] ||
+        "";
 
-    await toggleWishlist(
-      product
-    );
+      const selectedColor =
+        color ||
+        product.colors?.[0]
+          ?.name ||
+        "";
 
-    return {
-      success: true,
-      message:
-        "Product moved to cart",
+      await addToCart(
+        product,
+        quantity,
+        selectedSize,
+        selectedColor
+      );
+
+      await toggleWishlist(
+        product
+      );
+
+      return {
+        success: true,
+        message:
+          "Product moved to cart",
+      };
     };
-  };
 
   /*
   |--------------------------------------------------------------------------
@@ -997,52 +1170,47 @@ export const StoreProvider = ({ children }) => {
   |--------------------------------------------------------------------------
   */
 
-  const cartCount = cart.reduce(
-    (total, item) =>
-      total +
-      Number(
-        item?.quantity || 0
-      ),
-    0
-  );
+  const cartCount =
+    cart.reduce(
+      (total, item) =>
+        total +
+        Number(
+          item?.quantity || 0
+        ),
+      0
+    );
 
   /*
   |--------------------------------------------------------------------------
   | CART TOTAL
   |--------------------------------------------------------------------------
-  |
-  | Display value only.
-  |
-  | Backend MUST recalculate final
-  | checkout amount.
-  |
-  |--------------------------------------------------------------------------
   */
 
-  const cartTotal = cart.reduce(
-    (total, item) => {
-      const product =
-        item?.product;
+  const cartTotal =
+    cart.reduce(
+      (total, item) => {
+        const product =
+          item?.product;
 
-      if (!product) {
-        return total;
-      }
+        if (!product) {
+          return total;
+        }
 
-      const price =
-        getProductPrice(
-          product
+        const price =
+          getProductPrice(
+            product
+          );
+
+        return (
+          total +
+          price *
+            Number(
+              item.quantity || 0
+            )
         );
-
-      return (
-        total +
-        price *
-          Number(
-            item.quantity || 0
-          )
-      );
-    },
-    0
-  );
+      },
+      0
+    );
 
   /*
   |--------------------------------------------------------------------------
@@ -1063,7 +1231,7 @@ export const StoreProvider = ({ children }) => {
     <StoreContext.Provider
       value={{
         /*
-         * Products
+         * PRODUCTS
          */
         products,
         loading,
@@ -1071,7 +1239,7 @@ export const StoreProvider = ({ children }) => {
         fetchProducts,
 
         /*
-         * Cart
+         * CART
          */
         cart,
         cartItems: cart,
@@ -1086,7 +1254,7 @@ export const StoreProvider = ({ children }) => {
         refreshCartFromStorage,
 
         /*
-         * Wishlist
+         * WISHLIST
          */
         wishlist,
         wishlistCount,
@@ -1104,21 +1272,25 @@ export const StoreProvider = ({ children }) => {
 
 /*
 |--------------------------------------------------------------------------
-| USE STORE HOOK
+| USE STORE
 |--------------------------------------------------------------------------
 */
 
-export const useStore = () => {
-  const context =
-    useContext(StoreContext);
+export const useStore =
+  () => {
+    const context =
+      useContext(
+        StoreContext
+      );
 
-  if (!context) {
-    throw new Error(
-      "useStore must be used inside StoreProvider"
-    );
-  }
+    if (!context) {
+      throw new Error(
+        "useStore must be used inside StoreProvider"
+      );
+    }
 
-  return context;
-};
+    return context;
+  };
 
 export default StoreContext;
+

@@ -19,8 +19,7 @@ const Navbar = () => {
   const { cartCount, wishlist } = useStore();
   const { user, loading, logout } = useAuth();
 
-  const [mobileMenuOpen, setMobileMenuOpen] =
-    useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
     {
@@ -33,11 +32,11 @@ const Navbar = () => {
     },
     {
       name: "PERFORMANCE",
-      path: "/shop?collection=Performance",
+      path: "/performance",
     },
     {
       name: "LUXURY",
-      path: "/shop?collection=Luxury",
+      path: "/luxury",
     },
   ];
 
@@ -80,6 +79,7 @@ const Navbar = () => {
                 <NavLink
                   key={link.name}
                   to={link.path}
+                  onClick={closeMobileMenu}
                   className={({ isActive }) =>
                     `text-xs font-semibold tracking-widest transition ${
                       isActive
@@ -203,9 +203,7 @@ const Navbar = () => {
               <button
                 type="button"
                 onClick={() =>
-                  setMobileMenuOpen(
-                    (previous) => !previous
-                  )
+                  setMobileMenuOpen((previous) => !previous)
                 }
                 aria-label="Toggle menu"
               >
@@ -229,7 +227,13 @@ const Navbar = () => {
                   key={link.name}
                   to={link.path}
                   onClick={closeMobileMenu}
-                  className="block py-4 text-sm font-semibold tracking-widest border-b border-gray-100"
+                  className={({ isActive }) =>
+                    `block py-4 text-sm font-semibold tracking-widest border-b border-gray-100 ${
+                      isActive
+                        ? "text-black"
+                        : "text-gray-500"
+                    }`
+                  }
                 >
                   {link.name}
                 </NavLink>
@@ -302,3 +306,4 @@ const Navbar = () => {
 };
 
 export default Navbar;
+

@@ -164,7 +164,7 @@ const Home = () => {
             <div className="mt-9 flex flex-wrap gap-3">
               <Link
                 to={settings.heroButtonLink || "/shop"}
-                className="group inline-flex items-center gap-3 bg-white px-7 py-4 text-sm font-black text-black transition hover:bg-neutral-200"
+                className="group inline-flex items-center gap-3 bg-gray-300 px-7 py-4 text-sm font-black text-black transition hover:bg-neutral-200"
               >
                 {settings.heroButtonText || "SHOP NOW"}
 
@@ -285,7 +285,7 @@ const Home = () => {
 
           <Link
             to="/shop"
-            className="mt-9 inline-flex items-center gap-3 bg-white px-8 py-4 text-sm font-black text-black transition hover:bg-neutral-200"
+            className="mt-9 inline-flex items-center gap-3 bg-gray-700 px-8 py-4 text-sm font-black text-black transition hover:bg-neutral-200"
           >
             SHOP ALL
 
@@ -386,7 +386,7 @@ const CollectionSection = ({
     <section
       className={
         dark
-          ? "bg-neutral-950 text-white"
+          ? "bg-[oklch(56%_0.021_213.5)] text-gray-600"
           : "bg-neutral-100 text-black"
       }
     >
@@ -412,7 +412,7 @@ const CollectionSection = ({
             <p
               className={
                 dark
-                  ? "mt-3 text-sm text-neutral-500"
+                  ? "mt-3 text-sm text-[oklch(59.6%_0.145_163.225)]"
                   : "mt-3 text-sm text-neutral-600"
               }
             >
