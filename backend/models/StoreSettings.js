@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const storeSettingsSchema = new mongoose.Schema(
@@ -40,9 +39,13 @@ const storeSettingsSchema = new mongoose.Schema(
       trim: true,
     },
 
+    /* =========================
+       SHIPPING SETTINGS
+    ========================= */
+
     shippingFee: {
       type: Number,
-      default: 0,
+      default: 100,
       min: 0,
     },
 
@@ -52,12 +55,75 @@ const storeSettingsSchema = new mongoose.Schema(
       min: 0,
     },
 
+    /* =========================
+       TAX / GST
+    ========================= */
+
     gst: {
       type: Number,
       default: 0,
       min: 0,
       max: 100,
     },
+
+    /* =========================
+       COD SETTINGS
+    ========================= */
+
+    codEnabled: {
+      type: Boolean,
+      default: true,
+    },
+
+    codAdvanceEnabled: {
+      type: Boolean,
+      default: false,
+    },
+
+    /*
+      Percentage of final order amount
+      that customer must pay online
+      before COD order is confirmed.
+    */
+
+    codAdvancePercentage: {
+      type: Number,
+      default: 20,
+      min: 0,
+      max: 100,
+    },
+
+    /*
+      Minimum amount customer must
+      pay as COD advance.
+    */
+
+    codMinimumAdvance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    /*
+      Optional maximum order value
+      for COD.
+
+      Example:
+      5000 means COD is available
+      only for orders <= ₹5000.
+
+      null = no maximum.
+    */
+
+    codMaximumOrderValue: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    /* =========================
+       SOCIAL LINKS
+    ========================= */
 
     socialLinks: {
       instagram: {
@@ -84,6 +150,10 @@ const storeSettingsSchema = new mongoose.Schema(
         trim: true,
       },
     },
+
+    /* =========================
+       FOOTER
+    ========================= */
 
     footerText: {
       type: String,

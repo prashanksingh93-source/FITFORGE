@@ -2,291 +2,561 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
-  CheckCircle2,
+  CheckCircle,
   CreditCard,
+  Loader2,
   MapPin,
-  Package,
   ShieldCheck,
-  Tag,
   Truck,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
-
-const RAZORPAY_SCRIPT =
-  "https://checkout.razorpay.com/v1/checkout.js";
-
-const initialAddress = {
-  fullName: "",
-  phone: "",
-  addressLine: "",
-  city: "",
-  state: "",
-  pincode: "",
-  country: "India",
-};
 
 const Checkout = () => {
   const navigate = useNavigate();
 
+  const { user } = useAuth();
   const {
-    cart,
     cartItems,
+    cartTotal,
     clearCart,
-    fetchCart,
   } = useStore();
 
-  const [address, setAddress] =
-    useState(initialAddress);
+  const [loading, setLoading] = useState(true);
+  const [placingOrder, setPlacingOrder] = useState(false);
+
+  const [storeSettings, setStoreSettings] = useState({});
 
   const [paymentMethod, setPaymentMethod] =
-    useState("RAZORPAY");
+    useState("Razorpay");
 
-  const [couponCode, setCouponCode] =
-    useState("");
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponLoading, setCouponLoading] = useState(false);
 
-  const [appliedCoupon, setAppliedCoupon] =
-    useState(null);
+  const [address, setAddress] = useState({
+    fullName: "",
+    phone: "",
+    addressLine: "",
+    city: "",
+    state: "",
+    pincode: "",
+    country: "India",
+  });
 
-  const [loadingCoupon, setLoadingCoupon] =
-    useState(false);
+  /* =========================================================
+     LOAD SETTINGS
+  ========================================================= */
 
-  const [placingOrder, setPlacingOrder] =
-    useState(false);
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const response = await api.get("/settings");
 
-  const [error, setError] =
-    useState("");
+        const data =
+          response?.data?.settings ||
+          response?.data ||
+          {};
 
-  /*
-   * ----------------------------------------------------------
-   * CART
-   * ----------------------------------------------------------
-   */
+        setStoreSettings(data || {});
+      } catch (error) {
+        console.error(
+          "Failed to load store settings:",
+          error
+        );
 
-  const normalizedCartItems = useMemo(() => {
+        toast.error(
+          "Failed to load store settings"
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  /* =========================================================
+     REDIRECT IF NOT LOGGED IN
+  ========================================================= */
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate("/login?redirect=/checkout");
+    }
+  }, [user, loading, navigate]);
+
+  /* =========================================================
+     REDIRECT EMPTY CART
+  ========================================================= */
+
+  useEffect(() => {
     if (
-      Array.isArray(cartItems) &&
-      cartItems.length > 0
+      !loading &&
+      user &&
+      (!cartItems || cartItems.length === 0)
     ) {
-      return cartItems;
+      navigate("/cart");
     }
+  }, [
+    loading,
+    user,
+    cartItems,
+    navigate,
+  ]);
 
-    if (Array.isArray(cart?.items)) {
-      return cart.items;
-    }
+  /* =========================================================
+     PREFILL USER
+  ========================================================= */
 
-    if (Array.isArray(cart)) {
-      return cart;
-    }
+  useEffect(() => {
+    if (!user) return;
 
-    return [];
-  }, [cartItems, cart]);
+    setAddress((previous) => ({
+      ...previous,
 
-  /*
-   * ----------------------------------------------------------
-   * SUBTOTAL
-   * ----------------------------------------------------------
-   */
+      fullName:
+        previous.fullName ||
+        user.fullName ||
+        user.name ||
+        "",
+
+      phone:
+        previous.phone ||
+        user.phone ||
+        user.phoneNumber ||
+        "",
+
+      country:
+        previous.country || "India",
+    }));
+  }, [user]);
+
+  /* =========================================================
+     SETTINGS
+  ========================================================= */
+
+  const shippingFeeSetting = Math.max(
+    0,
+    Number(storeSettings.shippingFee || 0)
+  );
+
+  const freeShippingThreshold = Math.max(
+    0,
+    Number(
+      storeSettings.freeShippingThreshold || 0
+    )
+  );
+
+  const gstRate = Math.min(
+    100,
+    Math.max(
+      0,
+      Number(storeSettings.gst || 0)
+    )
+  );
+
+  const codEnabled =
+    storeSettings.codEnabled !== false;
+
+  const codAdvanceEnabled =
+    storeSettings.codAdvanceEnabled === true;
+
+  const codAdvancePercentage = Math.min(
+    100,
+    Math.max(
+      0,
+      Number(
+        storeSettings.codAdvancePercentage || 0
+      )
+    )
+  );
+
+  const codMinimumAdvance = Math.max(
+    0,
+    Number(
+      storeSettings.codMinimumAdvance || 0
+    )
+  );
+
+  const codMaximumOrderValue =
+    storeSettings.codMaximumOrderValue === null ||
+    storeSettings.codMaximumOrderValue ===
+      undefined ||
+    storeSettings.codMaximumOrderValue === ""
+      ? null
+      : Number(
+          storeSettings.codMaximumOrderValue
+        );
+
+  /* =========================================================
+     SUBTOTAL
+  ========================================================= */
 
   const subtotal = useMemo(() => {
-    return normalizedCartItems.reduce(
-      (total, item) => {
-        const product =
-          item.product || item;
-
-        const price =
-          Number(
-            item.price ??
-              item.salePrice ??
-              product.salePrice ??
-              product.price ??
-              0
-          ) || 0;
-
-        const quantity =
-          Number(item.quantity ?? 1) || 1;
-
-        return (
-          total +
-          price * quantity
-        );
-      },
-      0
-    );
-  }, [normalizedCartItems]);
-
-  /*
-   * ----------------------------------------------------------
-   * COLLECTION
-   * ----------------------------------------------------------
-   */
-
-  const collection = useMemo(() => {
-    const collections =
-      normalizedCartItems
-        .map((item) => {
-          const product =
-            item.product || item;
-
-          return product.collection;
-        })
-        .filter(Boolean);
-
-    if (
-      collections.length > 0 &&
-      collections.every(
-        (item) =>
-          item === "Performance"
-      )
-    ) {
-      return "Performance";
-    }
-
-    if (
-      collections.length > 0 &&
-      collections.every(
-        (item) =>
-          item === "Luxury"
-      )
-    ) {
-      return "Luxury";
-    }
-
-    return "All";
-  }, [normalizedCartItems]);
-
-  /*
-   * ----------------------------------------------------------
-   * FRONTEND DISPLAY SHIPPING
-   * ----------------------------------------------------------
-   *
-   * Backend remains the final authority.
-   */
-
-  const FREE_SHIPPING_THRESHOLD =
-    2000;
-
-  const DEFAULT_SHIPPING_FEE = 100;
-
-  const shipping = useMemo(() => {
-    if (subtotal <= 0) {
-      return 0;
-    }
-
-    if (
-      subtotal >=
-      FREE_SHIPPING_THRESHOLD
-    ) {
-      return 0;
-    }
-
-    return DEFAULT_SHIPPING_FEE;
-  }, [subtotal]);
-
-  /*
-   * ----------------------------------------------------------
-   * DISCOUNT
-   * ----------------------------------------------------------
-   */
-
-  const discount =
-    Number(
-      appliedCoupon?.discount || 0
-    ) || 0;
-
-  /*
-   * ----------------------------------------------------------
-   * TAX DISPLAY
-   * ----------------------------------------------------------
-   */
-
-  const estimatedTax = useMemo(() => {
-    const taxableAmount =
-      Math.max(
-        0,
-        subtotal - discount
+    if (appliedCoupon?.subtotal !== undefined) {
+      return Number(
+        appliedCoupon.subtotal
       );
+    }
+
+    return Number(cartTotal || 0);
+  }, [
+    cartTotal,
+    appliedCoupon,
+  ]);
+
+  /* =========================================================
+     DISCOUNT
+  ========================================================= */
+
+  const discount = useMemo(() => {
+    if (!appliedCoupon) return 0;
 
     return Number(
-      (
-        taxableAmount * 0.18
-      ).toFixed(2)
+      appliedCoupon.discount || 0
     );
-  }, [subtotal, discount]);
+  }, [appliedCoupon]);
 
-  /*
-   * ----------------------------------------------------------
-   * DISPLAY TOTAL
-   * ----------------------------------------------------------
-   */
+  const amountAfterDiscount = Math.max(
+    0,
+    subtotal - discount
+  );
 
-  const estimatedTotal =
-    useMemo(() => {
-      return Math.max(
-        0,
-        subtotal +
-          shipping +
-          estimatedTax -
-          discount
-      );
-    }, [
-      subtotal,
-      shipping,
-      estimatedTax,
-      discount,
-    ]);
+  /* =========================================================
+     SHIPPING
+  ========================================================= */
 
-  /*
-   * ----------------------------------------------------------
-   * ADDRESS CHANGE
-   * ----------------------------------------------------------
-   */
+  const shippingFee =
+    freeShippingThreshold > 0 &&
+    amountAfterDiscount >=
+      freeShippingThreshold
+      ? 0
+      : shippingFeeSetting;
 
-  const handleAddressChange = (
-    event
-  ) => {
+  /* =========================================================
+     GST
+  ========================================================= */
+
+  const tax = Number(
+    (
+      (amountAfterDiscount * gstRate) /
+      100
+    ).toFixed(2)
+  );
+
+  /* =========================================================
+     TOTAL
+  ========================================================= */
+
+  const totalAmount = Number(
+    (
+      amountAfterDiscount +
+      tax +
+      shippingFee
+    ).toFixed(2)
+  );
+
+  /* =========================================================
+     COD ADVANCE PREVIEW
+  ========================================================= */
+
+  const calculatedCodAdvance =
+    codAdvanceEnabled
+      ? Math.min(
+          totalAmount,
+          Math.max(
+            (totalAmount *
+              codAdvancePercentage) /
+              100,
+            codMinimumAdvance
+          )
+        )
+      : 0;
+
+  const codAdvance = Number(
+    calculatedCodAdvance.toFixed(2)
+  );
+
+  const codRemaining = Number(
+    Math.max(
+      0,
+      totalAmount - codAdvance
+    ).toFixed(2)
+  );
+
+  const codAllowedByOrderValue =
+    codMaximumOrderValue === null ||
+    totalAmount <=
+      codMaximumOrderValue;
+
+  /* =========================================================
+     FORM HANDLER
+  ========================================================= */
+
+  const handleChange = (event) => {
     const {
       name,
       value,
     } = event.target;
 
-    setAddress(
-      (previous) => ({
-        ...previous,
-        [name]: value,
-      })
+    setAddress((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+  /* =========================================================
+     APPLY COUPON
+  ========================================================= */
+
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) {
+      toast.error(
+        "Enter a coupon code"
+      );
+      return;
+    }
+
+    try {
+      setCouponLoading(true);
+
+      const response = await api.post(
+        "/coupons/validate",
+        {
+          code: couponCode.trim(),
+          subtotal: Number(cartTotal || 0),
+        }
+      );
+
+      const data =
+        response?.data || {};
+
+      if (!data.success) {
+        throw new Error(
+          data.message ||
+            "Invalid coupon"
+        );
+      }
+
+      setAppliedCoupon(data);
+
+      toast.success(
+        data.message ||
+          "Coupon applied successfully"
+      );
+    } catch (error) {
+      console.error(
+        "Coupon error:",
+        error
+      );
+
+      setAppliedCoupon(null);
+
+      toast.error(
+        error?.response?.data?.message ||
+          error.message ||
+          "Failed to apply coupon"
+      );
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  /* =========================================================
+     REMOVE COUPON
+  ========================================================= */
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+
+    toast.success(
+      "Coupon removed"
     );
   };
 
-  /*
-   * ----------------------------------------------------------
-   * RAZORPAY SCRIPT
-   * ----------------------------------------------------------
-   */
+  /* =========================================================
+     VALIDATE ADDRESS
+  ========================================================= */
+
+  const validateAddress = () => {
+    const fields = [
+      ["fullName", "Full name"],
+      ["phone", "Phone"],
+      ["addressLine", "Address"],
+      ["city", "City"],
+      ["state", "State"],
+      ["pincode", "Pincode"],
+    ];
+
+    for (const [
+      key,
+      label,
+    ] of fields) {
+      if (
+        !address[key] ||
+        !String(
+          address[key]
+        ).trim()
+      ) {
+        toast.error(
+          `${label} is required`
+        );
+        return false;
+      }
+    }
+
+    const phoneDigits =
+      address.phone.replace(
+        /\D/g,
+        ""
+      );
+
+    if (
+      phoneDigits.length !== 10
+    ) {
+      toast.error(
+        "Enter a valid 10-digit phone number"
+      );
+      return false;
+    }
+
+    const pincodeDigits =
+      address.pincode.replace(
+        /\D/g,
+        ""
+      );
+
+    if (
+      pincodeDigits.length !== 6
+    ) {
+      toast.error(
+        "Enter a valid 6-digit pincode"
+      );
+      return false;
+    }
+
+    return true;
+  };
+
+  /* =========================================================
+     CREATE ORDER
+  ========================================================= */
+
+  const createBackendOrder = async () => {
+    const items = cartItems.map(
+      (item) => ({
+        product:
+          item.product?._id ||
+          item.product ||
+          item._id,
+
+        quantity:
+          Number(
+            item.quantity
+          ),
+
+        size:
+          item.size || "",
+
+        color:
+          item.color || "",
+      })
+    );
+
+    if (items.length === 0) {
+      throw new Error(
+        "Your cart is empty"
+      );
+    }
+
+    /*
+      IMPORTANT:
+
+      We intentionally do NOT send:
+
+      price
+      subtotal
+      discount
+      shippingFee
+      tax
+      totalAmount
+      advanceAmount
+
+      Backend calculates all financial
+      values from MongoDB/Admin settings.
+    */
+
+    const response =
+      await api.post(
+        "/orders",
+        {
+          items,
+
+          shippingAddress: {
+            ...address,
+            fullName:
+              address.fullName.trim(),
+
+            phone:
+              address.phone.trim(),
+
+            addressLine:
+              address.addressLine.trim(),
+
+            city:
+              address.city.trim(),
+
+            state:
+              address.state.trim(),
+
+            pincode:
+              address.pincode.trim(),
+
+            country:
+              address.country?.trim() ||
+              "India",
+          },
+
+          paymentMethod,
+
+          couponCode:
+            appliedCoupon?.coupon?.code ||
+            couponCode.trim() ||
+            "",
+
+          notes: "",
+        }
+      );
+
+    const data =
+      response?.data || {};
+
+    if (!data.success || !data.order) {
+      throw new Error(
+        data.message ||
+          "Failed to create order"
+      );
+    }
+
+    return data;
+  };
+
+  /* =========================================================
+     LOAD RAZORPAY SCRIPT
+  ========================================================= */
 
   const loadRazorpay = () => {
     return new Promise(
       (resolve) => {
-        if (window.Razorpay) {
+        if (
+          window.Razorpay
+        ) {
           resolve(true);
-          return;
-        }
-
-        const existingScript =
-          document.querySelector(
-            `script[src="${RAZORPAY_SCRIPT}"]`
-          );
-
-        if (existingScript) {
-          existingScript.onload =
-            () => resolve(true);
-
-          existingScript.onerror =
-            () => resolve(false);
-
           return;
         }
 
@@ -296,9 +566,7 @@ const Checkout = () => {
           );
 
         script.src =
-          RAZORPAY_SCRIPT;
-
-        script.async = true;
+          "https://checkout.razorpay.com/v1/checkout.js";
 
         script.onload = () =>
           resolve(true);
@@ -313,515 +581,76 @@ const Checkout = () => {
     );
   };
 
-  useEffect(() => {
-    loadRazorpay();
-  }, []);
+  /* =========================================================
+     START RAZORPAY PAYMENT
+  ========================================================= */
 
-  /*
-   * ----------------------------------------------------------
-   * VALIDATE CHECKOUT
-   * ----------------------------------------------------------
-   */
+  const startRazorpayPayment = async (
+    orderId
+  ) => {
+    const scriptLoaded =
+      await loadRazorpay();
 
-  const validateCheckout = () => {
-    if (
-      normalizedCartItems.length ===
-      0
-    ) {
-      toast.error(
-        "Your cart is empty."
+    if (!scriptLoaded) {
+      throw new Error(
+        "Razorpay could not be loaded"
       );
-
-      return false;
-    }
-
-    if (
-      !address.fullName.trim()
-    ) {
-      toast.error(
-        "Please enter your full name."
-      );
-
-      return false;
-    }
-
-    if (
-      !address.phone.trim()
-    ) {
-      toast.error(
-        "Please enter your phone number."
-      );
-
-      return false;
-    }
-
-    if (
-      !/^[6-9]\d{9}$/.test(
-        address.phone.trim()
-      )
-    ) {
-      toast.error(
-        "Please enter a valid 10-digit Indian mobile number."
-      );
-
-      return false;
-    }
-
-    if (
-      !address.addressLine.trim()
-    ) {
-      toast.error(
-        "Please enter your complete address."
-      );
-
-      return false;
-    }
-
-    if (!address.city.trim()) {
-      toast.error(
-        "Please enter your city."
-      );
-
-      return false;
-    }
-
-    if (!address.state.trim()) {
-      toast.error(
-        "Please enter your state."
-      );
-
-      return false;
-    }
-
-    if (
-      !address.pincode.trim()
-    ) {
-      toast.error(
-        "Please enter your PIN code."
-      );
-
-      return false;
-    }
-
-    if (
-      !/^\d{6}$/.test(
-        address.pincode.trim()
-      )
-    ) {
-      toast.error(
-        "Please enter a valid 6-digit PIN code."
-      );
-
-      return false;
-    }
-
-    return true;
-  };
-
-  /*
-   * ----------------------------------------------------------
-   * APPLY COUPON
-   * ----------------------------------------------------------
-   */
-
-  const applyCoupon = async () => {
-    const code =
-      couponCode.trim();
-
-    if (!code) {
-      toast.error(
-        "Enter a coupon code."
-      );
-
-      return;
-    }
-
-    if (subtotal <= 0) {
-      toast.error(
-        "Your cart is empty."
-      );
-
-      return;
-    }
-
-    try {
-      setLoadingCoupon(true);
-
-      const response =
-        await api.post(
-          "/coupons/validate",
-          {
-            code,
-            subtotal,
-            collection,
-          }
-        );
-
-      if (
-        !response.data?.success
-      ) {
-        throw new Error(
-          response.data
-            ?.message ||
-            "Invalid coupon."
-        );
-      }
-
-      setAppliedCoupon({
-        ...response.data.coupon,
-        discount:
-          Number(
-            response.data.discount
-          ) || 0,
-      });
-
-      toast.success(
-        response.data.message ||
-          "Coupon applied successfully."
-      );
-    } catch (err) {
-      console.error(
-        "Coupon validation error:",
-        err
-      );
-
-      setAppliedCoupon(null);
-
-      toast.error(
-        err.response?.data
-          ?.message ||
-          err.message ||
-          "Unable to apply coupon."
-      );
-    } finally {
-      setLoadingCoupon(false);
-    }
-  };
-
-  /*
-   * ----------------------------------------------------------
-   * REMOVE COUPON
-   * ----------------------------------------------------------
-   */
-
-  const removeCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponCode("");
-
-    toast.success(
-      "Coupon removed."
-    );
-  };
-
-  /*
-   * ----------------------------------------------------------
-   * CREATE ORDER
-   * ----------------------------------------------------------
-   *
-   * IMPORTANT:
-   *
-   * Your Order model/controller expects:
-   *
-   * shippingAddress:
-   * {
-   *   fullName,
-   *   phone,
-   *   addressLine,
-   *   city,
-   *   state,
-   *   pincode
-   * }
-   */
-
-
-const createOrder = async () => {
-  if (!validateCheckout()) {
-    return null;
-  }
-
-  try {
-    setPlacingOrder(true);
-    setError("");
-
-    /*
-     * Convert the current cart into the structure
-     * expected by the backend.
-     *
-     * IMPORTANT:
-     * Do not send frontend prices as the trusted price.
-     * The backend should fetch the products from MongoDB
-     * and calculate the final price itself.
-     */
-
-    const items = normalizedCartItems
-      .map((item) => {
-        const product =
-          item.product || item;
-
-        const productId =
-          product?._id ||
-          item?.productId ||
-          item?.product?._id;
-
-        if (!productId) {
-          return null;
-        }
-
-        const quantity =
-          Number(item.quantity || 1);
-
-        return {
-          product: productId,
-
-          quantity:
-            quantity > 0 ? quantity : 1,
-
-          size:
-            item.size || "",
-
-          color:
-            typeof item.color === "string"
-              ? item.color
-              : item.color?.name || "",
-        };
-      })
-      .filter(Boolean);
-
-    /*
-     * Safety check.
-     */
-
-    if (items.length === 0) {
-      toast.error(
-        "Your cart does not contain any valid products."
-      );
-
-      console.error(
-        "Invalid cart items:",
-        normalizedCartItems
-      );
-
-      return null;
     }
 
     /*
-     * This is the exact payload sent to the backend.
-     */
+      Backend decides whether this is:
 
-    const orderData = {
-      items,
-
-      shippingAddress: {
-        fullName:
-          address.fullName.trim(),
-
-        phone:
-          address.phone.trim(),
-
-        addressLine:
-          address.addressLine.trim(),
-
-        city:
-          address.city.trim(),
-
-        state:
-          address.state.trim(),
-
-        pincode:
-          address.pincode.trim(),
-
-        country: "India",
-      },
-
-      paymentMethod,
-
-      couponCode:
-        appliedCoupon?.code || undefined,
-    };
-
-    console.log(
-      "Creating FITFORGE order:",
-      orderData
-    );
+      FULL_PAYMENT
+      or
+      COD_ADVANCE
+    */
 
     const response =
       await api.post(
-        "/orders",
-        orderData
+        "/payments/razorpay/create-order",
+        {
+          orderId,
+        }
       );
 
-    console.log(
-      "Create order response:",
-      response.data
-    );
+    const data =
+      response?.data || {};
 
-    if (!response.data?.success) {
+    if (
+      !data.success ||
+      !data.razorpayOrder
+    ) {
       throw new Error(
-        response.data?.message ||
-          "Unable to create order."
+        data.message ||
+          "Failed to create Razorpay order"
       );
     }
 
-    const createdOrder =
-      response.data.order ||
-      response.data.data;
+    const razorpayOrder =
+      data.razorpayOrder;
 
-    if (!createdOrder?._id) {
+    const paymentAmount =
+      Number(
+        data.paymentAmount ??
+          data.amount ??
+          0
+      );
+
+    if (
+      !Number.isFinite(
+        paymentAmount
+      ) ||
+      paymentAmount <= 0
+    ) {
       throw new Error(
-        "Order was created but order ID was not returned."
+        "Invalid Razorpay payment amount"
       );
     }
 
-    return createdOrder;
-  } catch (err) {
-    console.error(
-      "========== CREATE ORDER ERROR =========="
-    );
-
-    console.error(
-      "Status:",
-      err.response?.status
-    );
-
-    console.error(
-      "Backend response:",
-      err.response?.data
-    );
-
-    console.error(
-      "Backend message:",
-      err.response?.data?.message
-    );
-
-    console.error(
-      "Full error:",
-      err
-    );
-
-    console.error(
-      "========================================"
-    );
-
-    const message =
-      err.response?.data?.message ||
-      err.response?.data?.error ||
-      err.message ||
-      "Unable to create order.";
-
-    setError(message);
-
-    toast.error(message);
-
-    return null;
-  } finally {
-    setPlacingOrder(false);
-  }
-};
-
-
-
-  /*
-   * ----------------------------------------------------------
-   * RAZORPAY PAYMENT
-   * ----------------------------------------------------------
-   */
-
-  const startRazorpayPayment =
-    async (createdOrder) => {
-      try {
-        const loaded =
-          window.Razorpay ||
-          (await loadRazorpay());
-
-        if (
-          !loaded ||
-          !window.Razorpay
-        ) {
-          throw new Error(
-            "Razorpay failed to load. Please refresh the page and try again."
-          );
-        }
-
-        if (
-          !createdOrder?._id
-        ) {
-          throw new Error(
-            "Order ID is missing."
-          );
-        }
-
-        /*
-         * Backend creates Razorpay order.
-         */
-
-        const razorpayResponse =
-          await api.post(
-            "/payments/razorpay/order",
-            {
-              orderId:
-                createdOrder._id,
-            }
-          );
-
-        console.log(
-          "Razorpay backend response:",
-          razorpayResponse.data
-        );
-
-        if (
-          !razorpayResponse
-            .data?.success
-        ) {
-          throw new Error(
-            razorpayResponse
-              .data?.message ||
-              "Unable to create Razorpay order."
-          );
-        }
-
-        /*
-         * IMPORTANT:
-         *
-         * Backend returns:
-         *
-         * {
-         *   success: true,
-         *   razorpayOrder: {
-         *      id,
-         *      amount,
-         *      currency
-         *   },
-         *   keyId
-         * }
-         */
-
-        const razorpayOrder =
-          razorpayResponse
-            .data?.razorpayOrder;
-
-        const razorpayKey =
-          razorpayResponse
-            .data?.keyId;
-
-        const razorpayOrderId =
-          razorpayOrder?.id;
-
-        if (!razorpayKey) {
-          throw new Error(
-            "Razorpay key was not returned by the server."
-          );
-        }
-
-        if (
-          !razorpayOrderId
-        ) {
-          throw new Error(
-            "Razorpay order ID was not returned by the server."
-          );
-        }
-
+    return new Promise(
+      (resolve, reject) => {
         const options = {
-          key: razorpayKey,
+          key: data.keyId,
 
           amount:
             razorpayOrder.amount,
@@ -830,17 +659,25 @@ const createOrder = async () => {
             razorpayOrder.currency ||
             "INR",
 
-          name: "FITFORGE",
+          name:
+            storeSettings.storeName ||
+            "FITFORGE",
 
           description:
-            "FITFORGE Gym Wear Order",
+            data.paymentType ===
+            "COD_ADVANCE"
+              ? "FITFORGE COD Advance Payment"
+              : "FITFORGE Order Payment",
 
           order_id:
-            razorpayOrderId,
+            razorpayOrder.id,
 
           prefill: {
             name:
               address.fullName,
+
+            email:
+              user?.email || "",
 
             contact:
               address.phone,
@@ -848,9 +685,11 @@ const createOrder = async () => {
 
           notes: {
             fitforgeOrderId:
-              String(
-                createdOrder._id
-              ),
+              orderId,
+
+            paymentType:
+              data.paymentType ||
+              "FULL_PAYMENT",
           },
 
           theme: {
@@ -858,117 +697,63 @@ const createOrder = async () => {
           },
 
           handler:
-            async (
-              paymentResponse
-            ) => {
+            async function (
+              razorpayResponse
+            ) {
               try {
-                toast.loading(
-                  "Verifying payment...",
-                  {
-                    id: "payment-verification",
-                  }
-                );
-
                 /*
-                 * Backend expects snake_case
-                 * Razorpay fields.
-                 */
+                  Send Razorpay response to backend.
+                  Backend verifies signature,
+                  amount, order ID and payment status.
+                */
 
                 const verifyResponse =
                   await api.post(
                     "/payments/razorpay/verify",
                     {
-                      orderId:
-                        createdOrder._id,
+                      orderId,
 
                       razorpay_order_id:
-                        paymentResponse.razorpay_order_id,
+                        razorpayResponse.razorpay_order_id,
 
                       razorpay_payment_id:
-                        paymentResponse.razorpay_payment_id,
+                        razorpayResponse.razorpay_payment_id,
 
                       razorpay_signature:
-                        paymentResponse.razorpay_signature,
+                        razorpayResponse.razorpay_signature,
                     }
                   );
 
-                toast.dismiss(
-                  "payment-verification"
-                );
-
-                console.log(
-                  "Payment verification response:",
-                  verifyResponse.data
-                );
+                const verifyData =
+                  verifyResponse?.data ||
+                  {};
 
                 if (
-                  !verifyResponse
-                    .data?.success
+                  !verifyData.success
                 ) {
                   throw new Error(
-                    verifyResponse
-                      .data?.message ||
-                      "Payment verification failed."
+                    verifyData.message ||
+                      "Payment verification failed"
                   );
                 }
 
-                toast.success(
-                  "Payment successful!"
+                resolve(
+                  verifyData
                 );
-
-                try {
-                  await fetchCart?.();
-                } catch (
-                  cartError
-                ) {
-                  console.warn(
-                    "Cart refresh failed:",
-                    cartError
-                  );
-                }
-
-                try {
-                  await clearCart?.();
-                } catch (
-                  clearError
-                ) {
-                  console.warn(
-                    "Cart clear failed:",
-                    clearError
-                  );
-                }
-
-                navigate(
-                  `/orders/${createdOrder._id}`,
-                  {
-                    replace: true,
-                  }
-                );
-              } catch (err) {
-                toast.dismiss(
-                  "payment-verification"
-                );
-
-                console.error(
-                  "Razorpay verification error:",
-                  err
-                );
-
-                toast.error(
-                  err.response
-                    ?.data?.message ||
-                    err.message ||
-                    "Payment verification failed."
-                );
+              } catch (error) {
+                reject(error);
               }
             },
 
           modal: {
-            ondismiss: () => {
-              toast.info(
-                "Payment window closed."
-              );
-            },
+            ondismiss:
+              function () {
+                reject(
+                  new Error(
+                    "Payment window was closed"
+                  )
+                );
+              },
           },
         };
 
@@ -979,522 +764,416 @@ const createOrder = async () => {
 
         razorpay.on(
           "payment.failed",
-          (response) => {
-            console.error(
-              "Razorpay payment failed:",
-              response
-            );
-
-            toast.error(
-              response.error
-                ?.description ||
-                "Payment failed. Please try again."
+          function (
+            response
+          ) {
+            reject(
+              new Error(
+                response?.error
+                  ?.description ||
+                  "Razorpay payment failed"
+              )
             );
           }
         );
 
         razorpay.open();
-      } catch (err) {
-        console.error(
-          "Razorpay payment error:",
-          err
-        );
-
-        toast.error(
-          err.response?.data
-            ?.message ||
-            err.message ||
-            "Unable to start Razorpay payment."
-        );
       }
-    };
+    );
+  };
 
-  /*
-   * ----------------------------------------------------------
-   * PLACE ORDER
-   * ----------------------------------------------------------
-   */
+  /* =========================================================
+     PLACE ORDER
+  ========================================================= */
 
-  const handlePlaceOrder =
-    async () => {
-      if (placingOrder) {
-        return;
-      }
+  const handlePlaceOrder = async () => {
+    if (placingOrder) return;
 
-      if (!validateCheckout()) {
-        return;
-      }
+    if (!validateAddress()) {
+      return;
+    }
 
-      setError("");
+    if (
+      paymentMethod === "COD" &&
+      !codEnabled
+    ) {
+      toast.error(
+        "COD is currently unavailable"
+      );
+      return;
+    }
 
-      const createdOrder =
-        await createOrder();
+    if (
+      paymentMethod === "COD" &&
+      !codAllowedByOrderValue
+    ) {
+      toast.error(
+        `COD is available only for orders up to ₹${codMaximumOrderValue}`
+      );
+      return;
+    }
 
-      if (!createdOrder) {
-        return;
-      }
+    try {
+      setPlacingOrder(true);
 
       /*
-       * Razorpay
-       */
+        STEP 1:
+        Create the order on backend.
+
+        Backend recalculates all prices.
+      */
+
+      const orderData =
+        await createBackendOrder();
+
+      const order =
+        orderData.order;
+
+      /*
+        STEP 2:
+        If payment is required,
+        open Razorpay.
+
+        For:
+        Razorpay -> totalAmount
+
+        COD with advance ->
+        advanceAmount only
+      */
 
       if (
-        paymentMethod ===
-        "RAZORPAY"
+        orderData.paymentRequired
       ) {
         await startRazorpayPayment(
-          createdOrder
+          order._id
+        );
+
+        /*
+          Payment has been verified
+          by backend.
+        */
+
+        await clearCart();
+
+        navigate(
+          `/orders/${order._id}`,
+          {
+            replace: true,
+            state: {
+              paymentSuccess: true,
+            },
+          }
         );
 
         return;
       }
 
       /*
-       * COD
-       */
+        COD without advance.
+      */
 
-      try {
-        toast.success(
-          "Order placed successfully."
-        );
+      await clearCart();
 
-        try {
-          await fetchCart?.();
-        } catch (
-          cartError
-        ) {
-          console.warn(
-            "Cart refresh failed:",
-            cartError
-          );
+      navigate(
+        `/orders/${order._id}`,
+        {
+          replace: true,
+          state: {
+            orderSuccess: true,
+          },
         }
+      );
+    } catch (error) {
+      console.error(
+        "Checkout error:",
+        error
+      );
 
-        try {
-          await clearCart?.();
-        } catch (
-          clearError
-        ) {
-          console.warn(
-            "Cart clear failed:",
-            clearError
-          );
-        }
+      toast.error(
+        error?.response?.data
+          ?.message ||
+          error?.message ||
+          "Unable to place order"
+      );
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
 
-        navigate(
-          `/orders/${createdOrder._id}`,
-          {
-            replace: true,
-          }
-        );
-      } catch (err) {
-        console.error(
-          "COD checkout error:",
-          err
-        );
+  /* =========================================================
+     LOADING
+  ========================================================= */
 
-        toast.error(
-          "Order was created but navigation failed."
-        );
-      }
-    };
-
-  /*
-   * ----------------------------------------------------------
-   * EMPTY CART
-   * ----------------------------------------------------------
-   */
-
-  if (
-    !placingOrder &&
-    normalizedCartItems.length ===
-      0
-  ) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-white">
-        <div className="mx-auto flex min-h-[70vh] max-w-5xl flex-col items-center justify-center px-6 text-center">
-          <Package
-            size={52}
-            strokeWidth={1.5}
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex items-center gap-3 text-gray-600">
+          <Loader2
+            size={24}
+            className="animate-spin"
           />
-
-          <h1 className="mt-6 text-3xl font-black uppercase tracking-tight">
-            Your cart is empty
-          </h1>
-
-          <p className="mt-3 max-w-md text-sm text-gray-500">
-            Add some FITFORGE gym wear
-            to your cart before checking
-            out.
-          </p>
-
-          <Link
-            to="/shop"
-            className="mt-8 inline-flex items-center gap-2 bg-black px-7 py-4 text-sm font-bold uppercase tracking-wider text-white transition hover:bg-gray-800"
-          >
-            Continue Shopping
-          </Link>
+          Loading checkout...
         </div>
       </div>
     );
   }
 
-  /*
-   * ----------------------------------------------------------
-   * UI
-   * ----------------------------------------------------------
-   */
+  if (
+    !user ||
+    !cartItems?.length
+  ) {
+    return null;
+  }
+
+  /* =========================================================
+     RENDER
+  ========================================================= */
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
+    <div className="min-h-screen bg-gray-50">
+      {/* =========================
+          HEADER
+      ========================= */}
 
-      <div className="border-b border-gray-200">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-5">
           <Link
             to="/cart"
-            className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide"
+            className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-black"
           >
             <ArrowLeft size={18} />
             Back to Cart
           </Link>
 
-          <div className="text-xl font-black tracking-[0.2em]">
-            FITFORGE
-          </div>
-
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase text-gray-500">
-            <ShieldCheck size={16} />
-            Secure Checkout
-          </div>
+          <h1 className="mt-4 text-2xl md:text-3xl font-bold">
+            Checkout
+          </h1>
         </div>
       </div>
 
-      {/* Main */}
+      {/* =========================
+          MAIN
+      ========================= */}
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
-        <div className="grid gap-8 lg:grid-cols-[1fr_420px]">
-          {/* LEFT */}
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* =====================
+              LEFT
+          ===================== */}
 
-          <div className="space-y-8">
-            {/* Error */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* ADDRESS */}
 
-            {error && (
-              <div className="flex items-start gap-3 border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                <X size={18} />
-
-                <div>
-                  <p className="font-bold">
-                    Checkout Error
-                  </p>
-
-                  <p className="mt-1">
-                    {error}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* DELIVERY LOCATION */}
-
-            <section className="border border-gray-200">
-              <div className="border-b border-gray-200 px-5 py-5 sm:px-6">
-                <div className="flex items-center gap-3">
+            <section className="bg-white rounded-2xl border border-gray-200 p-5 md:p-7">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 rounded-lg bg-gray-100">
                   <MapPin size={20} />
+                </div>
 
-                  <div>
-                    <h2 className="text-lg font-black uppercase">
-                      Delivery Location
-                    </h2>
+                <div>
+                  <h2 className="text-lg font-semibold">
+                    Delivery Address
+                  </h2>
 
-                    <p className="mt-1 text-xs text-gray-500">
-                      Enter the complete location
-                      where your FITFORGE order
-                      should be delivered.
-                    </p>
-                  </div>
+                  <p className="text-sm text-gray-500">
+                    Where should we deliver your
+                    order?
+                  </p>
                 </div>
               </div>
 
-              <div className="grid gap-5 p-5 sm:grid-cols-2 sm:p-6">
-                {/* NAME */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <Input
+                  label="Full Name"
+                  name="fullName"
+                  value={
+                    address.fullName
+                  }
+                  onChange={
+                    handleChange
+                  }
+                />
 
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
-                    Full Name *
-                  </label>
+                <Input
+                  label="Phone"
+                  name="phone"
+                  value={
+                    address.phone
+                  }
+                  onChange={
+                    handleChange
+                  }
+                  type="tel"
+                />
 
-                  <input
-                    type="text"
-                    name="fullName"
-                    value={
-                      address.fullName
-                    }
-                    onChange={
-                      handleAddressChange
-                    }
-                    placeholder="Full name"
-                    autoComplete="name"
-                    className="w-full border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
-                  />
-                </div>
-
-                {/* PHONE */}
-
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
-                    Phone *
-                  </label>
-
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={
-                      address.phone
-                    }
-                    onChange={
-                      handleAddressChange
-                    }
-                    placeholder="10-digit mobile number"
-                    maxLength={10}
-                    autoComplete="tel"
-                    className="w-full border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
-                  />
-                </div>
-
-                {/* COMPLETE ADDRESS */}
-
-                <div className="sm:col-span-2">
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
-                    Complete Address *
-                  </label>
-
-                  <textarea
+                <div className="md:col-span-2">
+                  <Input
+                    label="Address"
                     name="addressLine"
                     value={
                       address.addressLine
                     }
                     onChange={
-                      handleAddressChange
+                      handleChange
                     }
-                    placeholder="House/Flat number, building, street, area, landmark"
-                    rows={4}
-                    autoComplete="street-address"
-                    className="w-full resize-none border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
                   />
                 </div>
 
-                {/* CITY */}
+                <Input
+                  label="City"
+                  name="city"
+                  value={
+                    address.city
+                  }
+                  onChange={
+                    handleChange
+                  }
+                />
 
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
-                    City *
-                  </label>
+                <Input
+                  label="State"
+                  name="state"
+                  value={
+                    address.state
+                  }
+                  onChange={
+                    handleChange
+                  }
+                />
 
-                  <input
-                    type="text"
-                    name="city"
-                    value={
-                      address.city
-                    }
-                    onChange={
-                      handleAddressChange
-                    }
-                    placeholder="City"
-                    autoComplete="address-level2"
-                    className="w-full border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
-                  />
-                </div>
+                <Input
+                  label="Pincode"
+                  name="pincode"
+                  value={
+                    address.pincode
+                  }
+                  onChange={
+                    handleChange
+                  }
+                  inputMode="numeric"
+                />
 
-                {/* STATE */}
-
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
-                    State *
-                  </label>
-
-                  <input
-                    type="text"
-                    name="state"
-                    value={
-                      address.state
-                    }
-                    onChange={
-                      handleAddressChange
-                    }
-                    placeholder="State"
-                    autoComplete="address-level1"
-                    className="w-full border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
-                  />
-                </div>
-
-                {/* PINCODE */}
-
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
-                    PIN Code *
-                  </label>
-
-                  <input
-                    type="text"
-                    name="pincode"
-                    value={
-                      address.pincode
-                    }
-                    onChange={
-                      handleAddressChange
-                    }
-                    placeholder="6-digit PIN"
-                    maxLength={6}
-                    inputMode="numeric"
-                    autoComplete="postal-code"
-                    className="w-full border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
-                  />
-                </div>
-
-                {/* COUNTRY */}
-
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
-                    Country
-                  </label>
-
-                  <input
-                    type="text"
-                    name="country"
-                    value="India"
-                    disabled
-                    className="w-full border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500 outline-none"
-                  />
-                </div>
+                <Input
+                  label="Country"
+                  name="country"
+                  value={
+                    address.country
+                  }
+                  onChange={
+                    handleChange
+                  }
+                />
               </div>
             </section>
 
             {/* COUPON */}
 
-            <section className="border border-gray-200">
-              <div className="border-b border-gray-200 px-5 py-5 sm:px-6">
-                <div className="flex items-center gap-3">
-                  <Tag size={20} />
+            <section className="bg-white rounded-2xl border border-gray-200 p-5 md:p-7">
+              <h2 className="text-lg font-semibold mb-5">
+                Coupon
+              </h2>
 
-                  <div>
-                    <h2 className="text-lg font-black uppercase">
-                      Coupon
-                    </h2>
+              {appliedCoupon ? (
+                <div className="flex items-center justify-between gap-4 border border-gray-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle
+                      size={20}
+                      className="text-green-600"
+                    />
 
-                    <p className="mt-1 text-xs text-gray-500">
-                      Apply an available FITFORGE
-                      discount code.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-5 sm:p-6">
-                {appliedCoupon ? (
-                  <div className="flex items-center justify-between border border-green-200 bg-green-50 p-4">
                     <div>
-                      <p className="text-sm font-black uppercase text-green-800">
+                      <p className="font-semibold">
                         {
-                          appliedCoupon.code
+                          appliedCoupon
+                            ?.coupon
+                            ?.code
                         }
                       </p>
 
-                      <p className="mt-1 text-xs text-green-700">
-                        Discount applied: ₹
-                        {discount.toFixed(
-                          2
-                        )}
+                      <p className="text-sm text-gray-500">
+                        Discount ₹
+                        {Number(
+                          discount
+                        ).toFixed(2)}
                       </p>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={
-                        removeCoupon
-                      }
-                      className="text-xs font-bold uppercase underline"
-                    >
-                      Remove
-                    </button>
                   </div>
-                ) : (
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <input
-                      type="text"
-                      value={
-                        couponCode
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        setCouponCode(
-                          event.target.value.toUpperCase()
-                        )
-                      }
-                      placeholder="ENTER COUPON CODE"
-                      className="min-w-0 flex-1 border border-gray-300 px-4 py-3 text-sm font-semibold uppercase outline-none focus:border-black"
-                    />
 
-                    <button
-                      type="button"
-                      onClick={
-                        applyCoupon
-                      }
-                      disabled={
-                        loadingCoupon
-                      }
-                      className="bg-black px-7 py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {loadingCoupon
-                        ? "Checking..."
-                        : "Apply"}
-                    </button>
-                  </div>
-                )}
-              </div>
+                  <button
+                    type="button"
+                    onClick={
+                      handleRemoveCoupon
+                    }
+                    className="text-sm font-semibold text-red-600"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    value={
+                      couponCode
+                    }
+                    onChange={(event) =>
+                      setCouponCode(
+                        event.target.value
+                      )
+                    }
+                    placeholder="Enter coupon code"
+                    className="flex-1 rounded-xl border border-gray-300 px-4 py-3 outline-none focus:ring-2 focus:ring-black"
+                  />
+
+                  <button
+                    type="button"
+                    disabled={
+                      couponLoading
+                    }
+                    onClick={
+                      handleApplyCoupon
+                    }
+                    className="px-6 py-3 rounded-xl bg-black text-white font-semibold disabled:opacity-50"
+                  >
+                    {couponLoading
+                      ? "Applying..."
+                      : "Apply"}
+                  </button>
+                </div>
+              )}
             </section>
 
             {/* PAYMENT */}
 
-            <section className="border border-gray-200">
-              <div className="border-b border-gray-200 px-5 py-5 sm:px-6">
-                <div className="flex items-center gap-3">
+            <section className="bg-white rounded-2xl border border-gray-200 p-5 md:p-7">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 rounded-lg bg-gray-100">
                   <CreditCard size={20} />
+                </div>
 
-                  <div>
-                    <h2 className="text-lg font-black uppercase">
-                      Payment Method
-                    </h2>
+                <div>
+                  <h2 className="text-lg font-semibold">
+                    Payment Method
+                  </h2>
 
-                    <p className="mt-1 text-xs text-gray-500">
-                      Choose how you want to pay.
-                    </p>
-                  </div>
+                  <p className="text-sm text-gray-500">
+                    Choose how you want to pay.
+                  </p>
                 </div>
               </div>
 
-              <div className="space-y-3 p-5 sm:p-6">
+              <div className="space-y-3">
                 {/* RAZORPAY */}
 
-                <label
-                  className={`flex cursor-pointer items-start gap-4 border p-4 transition ${
-                    paymentMethod ===
-                    "RAZORPAY"
-                      ? "border-black bg-gray-50"
-                      : "border-gray-200"
-                  }`}
-                >
+                <label className="flex items-start gap-4 border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-black">
                   <input
                     type="radio"
                     name="paymentMethod"
-                    value="RAZORPAY"
+                    value="Razorpay"
                     checked={
                       paymentMethod ===
-                      "RAZORPAY"
+                      "Razorpay"
                     }
-                    onChange={(
-                      event
-                    ) =>
+                    onChange={(event) =>
                       setPaymentMethod(
                         event.target.value
                       )
@@ -1502,376 +1181,358 @@ const createOrder = async () => {
                     className="mt-1"
                   />
 
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <CreditCard
-                        size={18}
-                      />
+                  <div>
+                    <p className="font-semibold">
+                      Online Payment
+                    </p>
 
-                      <p className="text-sm font-black uppercase">
-                        Razorpay
-                      </p>
-                    </div>
-
-                    <p className="mt-1 text-xs text-gray-500">
-                      UPI, cards, net banking and
-                      supported payment methods.
+                    <p className="text-sm text-gray-500 mt-1">
+                      Pay securely using
+                      Razorpay.
                     </p>
                   </div>
-
-                  <ShieldCheck
-                    size={18}
-                    className="text-gray-500"
-                  />
                 </label>
 
                 {/* COD */}
 
-                <label
-                  className={`flex cursor-pointer items-start gap-4 border p-4 transition ${
-                    paymentMethod ===
-                    "COD"
-                      ? "border-black bg-gray-50"
-                      : "border-gray-200"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="COD"
-                    checked={
-                      paymentMethod ===
-                      "COD"
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setPaymentMethod(
-                        event.target.value
-                      )
-                    }
-                    className="mt-1"
-                  />
+                {codEnabled && (
+                  <label
+                    className={`flex items-start gap-4 border rounded-xl p-4 ${
+                      codAllowedByOrderValue
+                        ? "cursor-pointer hover:border-black border-gray-200"
+                        : "opacity-50 cursor-not-allowed border-gray-200"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="COD"
+                      checked={
+                        paymentMethod ===
+                        "COD"
+                      }
+                      disabled={
+                        !codAllowedByOrderValue
+                      }
+                      onChange={(event) =>
+                        setPaymentMethod(
+                          event.target.value
+                        )
+                      }
+                      className="mt-1"
+                    />
 
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Package
-                        size={18}
-                      />
-
-                      <p className="text-sm font-black uppercase">
+                    <div>
+                      <p className="font-semibold">
                         Cash on Delivery
                       </p>
+
+                      <p className="text-sm text-gray-500 mt-1">
+                        {codAllowedByOrderValue
+                          ? codAdvanceEnabled
+                            ? `Pay ${codAdvancePercentage}% online and the remaining amount at delivery.`
+                            : "Pay the full amount when your order is delivered."
+                          : `COD is available only up to ₹${codMaximumOrderValue}.`}
+                      </p>
                     </div>
-
-                    <p className="mt-1 text-xs text-gray-500">
-                      Pay when your order is
-                      delivered.
-                    </p>
-                  </div>
-                </label>
-              </div>
-            </section>
-
-            {/* TRUST */}
-
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="border border-gray-200 p-5">
-                <ShieldCheck size={22} />
-
-                <p className="mt-3 text-xs font-black uppercase">
-                  Secure Payment
-                </p>
-
-                <p className="mt-1 text-xs text-gray-500">
-                  Payments are securely processed.
-                </p>
+                  </label>
+                )}
               </div>
 
-              <div className="border border-gray-200 p-5">
-                <Truck size={22} />
+              {/* COD ADVANCE NOTICE */}
 
-                <p className="mt-3 text-xs font-black uppercase">
-                  Fast Delivery
-                </p>
+              {paymentMethod ===
+                "COD" &&
+                codAdvanceEnabled &&
+                codAllowedByOrderValue && (
+                  <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-5">
+                    <div className="flex items-start gap-3">
+                      <ShieldCheck
+                        size={22}
+                        className="shrink-0"
+                      />
 
-                <p className="mt-1 text-xs text-gray-500">
-                  Reliable delivery across India.
-                </p>
-              </div>
+                      <div>
+                        <p className="font-semibold">
+                          COD Advance Payment
+                        </p>
 
-              <div className="border border-gray-200 p-5">
-                <CheckCircle2 size={22} />
+                        <p className="text-sm text-gray-600 mt-1 leading-6">
+                          You will pay{" "}
+                          <strong>
+                            {codAdvancePercentage}%
+                          </strong>{" "}
+                          online before we
+                          confirm your COD order.
+                        </p>
 
-                <p className="mt-3 text-xs font-black uppercase">
-                  Quality Assured
-                </p>
+                        <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-gray-500">
+                              Pay Online
+                            </p>
 
-                <p className="mt-1 text-xs text-gray-500">
-                  Authentic FITFORGE products.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT */}
-
-          <aside className="lg:sticky lg:top-6 lg:self-start">
-            <div className="border border-gray-200">
-              <div className="border-b border-gray-200 px-5 py-5">
-                <h2 className="text-lg font-black uppercase">
-                  Order Summary
-                </h2>
-              </div>
-
-              <div className="divide-y divide-gray-100">
-                {normalizedCartItems.map(
-                  (
-                    item,
-                    index
-                  ) => {
-                    const product =
-                      item.product ||
-                      item;
-
-                    const name =
-                      product.name ||
-                      "FITFORGE Product";
-
-                    const image =
-                      item.thumbnail ||
-                      product.thumbnail ||
-                      product.images?.[0];
-
-                    const price =
-                      Number(
-                        item.price ??
-                          item.salePrice ??
-                          product.salePrice ??
-                          product.price ??
-                          0
-                      ) || 0;
-
-                    const quantity =
-                      Number(
-                        item.quantity ??
-                          1
-                      ) || 1;
-
-                    return (
-                      <div
-                        key={
-                          item._id ||
-                          product._id ||
-                          `${name}-${index}`
-                        }
-                        className="flex gap-4 p-5"
-                      >
-                        <div className="h-20 w-16 shrink-0 overflow-hidden bg-gray-100">
-                          {image ? (
-                            <img
-                              src={image}
-                              alt={name}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full items-center justify-center">
-                              <Package
-                                size={20}
-                                className="text-gray-400"
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold uppercase">
-                            {name}
-                          </p>
-
-                          <div className="mt-2 space-y-1 text-xs text-gray-500">
-                            {item.size && (
-                              <p>
-                                Size:{" "}
-                                <span className="font-semibold text-gray-700">
-                                  {
-                                    item.size
-                                  }
-                                </span>
-                              </p>
-                            )}
-
-                            {item.color && (
-                              <p>
-                                Color:{" "}
-                                <span className="font-semibold text-gray-700">
-                                  {typeof item.color ===
-                                  "string"
-                                    ? item.color
-                                    : item.color
-                                        ?.name ||
-                                      ""}
-                                </span>
-                              </p>
-                            )}
-
-                            <p>
-                              Qty:{" "}
-                              <span className="font-semibold text-gray-700">
-                                {
-                                  quantity
-                                }
-                              </span>
+                            <p className="text-lg font-bold">
+                              ₹
+                              {codAdvance.toFixed(
+                                2
+                              )}
                             </p>
                           </div>
 
-                          <p className="mt-2 text-sm font-black">
-                            ₹
-                            {(
-                              price *
-                              quantity
-                            ).toFixed(
-                              2
-                            )}
-                          </p>
+                          <div>
+                            <p className="text-gray-500">
+                              Pay at Delivery
+                            </p>
+
+                            <p className="text-lg font-bold">
+                              ₹
+                              {codRemaining.toFixed(
+                                2
+                              )}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    );
-                  }
+                    </div>
+                  </div>
                 )}
-              </div>
+            </section>
+          </div>
 
-              {/* TOTALS */}
+          {/* =====================
+              RIGHT SUMMARY
+          ===================== */}
 
-              <div className="space-y-3 border-t border-gray-200 p-5">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">
-                    Subtotal
-                  </span>
+          <div>
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 md:p-7 lg:sticky lg:top-6">
+              <h2 className="text-xl font-bold mb-6">
+                Order Summary
+              </h2>
 
-                  <span className="font-semibold">
-                    ₹
-                    {subtotal.toFixed(
-                      2
-                    )}
-                  </span>
-                </div>
+              <div className="space-y-4">
+                <SummaryRow
+                  label="Subtotal"
+                  value={`₹${subtotal.toFixed(
+                    2
+                  )}`}
+                />
 
                 {discount > 0 && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">
-                      Discount
-                    </span>
+                  <SummaryRow
+                    label="Discount"
+                    value={`-₹${discount.toFixed(
+                      2
+                    )}`}
+                    positive
+                  />
+                )}
 
-                    <span className="font-semibold text-green-700">
-                      -₹
-                      {discount.toFixed(
-                        2
-                      )}
-                    </span>
+                <SummaryRow
+                  label="Shipping"
+                  value={
+                    shippingFee === 0
+                      ? "FREE"
+                      : `₹${shippingFee.toFixed(
+                          2
+                        )}`
+                  }
+                />
+
+                <SummaryRow
+                  label={`GST (${gstRate}%)`}
+                  value={`₹${tax.toFixed(
+                    2
+                  )}`}
+                />
+
+                <div className="border-t pt-4">
+                  <SummaryRow
+                    label="Total"
+                    value={`₹${totalAmount.toFixed(
+                      2
+                    )}`}
+                    bold
+                  />
+                </div>
+
+                {/* COD TOTAL */}
+
+                {paymentMethod ===
+                  "COD" &&
+                  codAdvanceEnabled &&
+                  codAllowedByOrderValue && (
+                    <div className="border-t pt-4 mt-4 space-y-3">
+                      <p className="font-semibold text-sm">
+                        COD Payment Breakdown
+                      </p>
+
+                      <SummaryRow
+                        label="Pay Online Now"
+                        value={`₹${codAdvance.toFixed(
+                          2
+                        )}`}
+                        bold
+                      />
+
+                      <SummaryRow
+                        label="Pay at Delivery"
+                        value={`₹${codRemaining.toFixed(
+                          2
+                        )}`}
+                      />
+                    </div>
+                  )}
+              </div>
+
+              {/* SHIPPING MESSAGE */}
+
+              {shippingFee > 0 &&
+                freeShippingThreshold >
+                  0 &&
+                amountAfterDiscount <
+                  freeShippingThreshold && (
+                  <div className="mt-5 rounded-xl bg-gray-50 p-4 text-sm text-gray-600">
+                    Add ₹
+                    {(
+                      freeShippingThreshold -
+                      amountAfterDiscount
+                    ).toFixed(
+                      2
+                    )}{" "}
+                    more to get free shipping.
                   </div>
                 )}
 
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">
-                    Shipping
-                  </span>
+              {/* PLACE ORDER */}
 
-                  <span className="font-semibold">
-                    {shipping ===
-                    0 ? (
-                      <span className="text-green-700">
-                        FREE
-                      </span>
-                    ) : (
-                      `₹${shipping.toFixed(
-                        2
-                      )}`
-                    )}
-                  </span>
-                </div>
+              <button
+                type="button"
+                disabled={
+                  placingOrder ||
+                  (paymentMethod ===
+                    "COD" &&
+                    !codAllowedByOrderValue)
+                }
+                onClick={
+                  handlePlaceOrder
+                }
+                className="w-full mt-6 bg-black text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                {placingOrder ? (
+                  <>
+                    <Loader2
+                      size={20}
+                      className="animate-spin"
+                    />
 
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">
-                    GST / Tax
-                  </span>
-
-                  <span className="font-semibold">
-                    ₹
-                    {estimatedTax.toFixed(
+                    Processing...
+                  </>
+                ) : paymentMethod ===
+                  "COD" &&
+                  codAdvanceEnabled ? (
+                  <>
+                    Pay ₹
+                    {codAdvance.toFixed(
+                      2
+                    )} & Place COD Order
+                  </>
+                ) : paymentMethod ===
+                  "COD" ? (
+                  <>
+                    <Truck
+                      size={20}
+                    />
+                    Place COD Order
+                  </>
+                ) : (
+                  <>
+                    <CreditCard
+                      size={20}
+                    />
+                    Pay ₹
+                    {totalAmount.toFixed(
                       2
                     )}
-                  </span>
-                </div>
+                  </>
+                )}
+              </button>
 
-                <div className="border-t border-gray-200 pt-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-base font-black uppercase">
-                      Total
-                    </span>
-
-                    <span className="text-xl font-black">
-                      ₹
-                      {estimatedTotal.toFixed(
-                        2
-                      )}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* BUTTON */}
-
-              <div className="border-t border-gray-200 p-5">
-                <button
-                  type="button"
-                  onClick={
-                    handlePlaceOrder
-                  }
-                  disabled={
-                    placingOrder
-                  }
-                  className="flex w-full items-center justify-center gap-3 bg-black px-6 py-4 text-sm font-black uppercase tracking-wider text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {placingOrder ? (
-                    <>
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-
-                      Processing...
-                    </>
-                  ) : paymentMethod ===
-                    "RAZORPAY" ? (
-                    <>
-                      <CreditCard
-                        size={18}
-                      />
-
-                      Pay with Razorpay
-                    </>
-                  ) : (
-                    <>
-                      <Package
-                        size={18}
-                      />
-
-                      Place COD Order
-                    </>
-                  )}
-                </button>
-
-                <p className="mt-4 text-center text-[11px] leading-relaxed text-gray-500">
-                  By placing your order,
-                  you agree to FITFORGE's
-                  terms and conditions.
-                </p>
+              <div className="mt-5 flex items-center justify-center gap-2 text-xs text-gray-500">
+                <ShieldCheck size={15} />
+                Secure payment processing
               </div>
             </div>
-          </aside>
+          </div>
         </div>
-      </main>
+      </div>
+    </div>
+  );
+};
+
+/* =========================================================
+   INPUT
+========================================================= */
+
+const Input = ({
+  label,
+  name,
+  value,
+  onChange,
+  type = "text",
+  inputMode,
+}) => {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        {label}
+      </label>
+
+      <input
+        type={type}
+        name={name}
+        value={value}
+        onChange={onChange}
+        inputMode={inputMode}
+        className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:ring-2 focus:ring-black"
+      />
+    </div>
+  );
+};
+
+/* =========================================================
+   SUMMARY ROW
+========================================================= */
+
+const SummaryRow = ({
+  label,
+  value,
+  bold = false,
+  positive = false,
+}) => {
+  return (
+    <div
+      className={`flex items-center justify-between gap-4 ${
+        bold
+          ? "text-lg font-bold"
+          : "text-sm"
+      }`}
+    >
+      <span className="text-gray-600">
+        {label}
+      </span>
+
+      <span
+        className={
+          positive
+            ? "text-green-600 font-semibold"
+            : ""
+        }
+      >
+        {value}
+      </span>
     </div>
   );
 };
 
 export default Checkout;
-

@@ -9,6 +9,10 @@ import {
   Tag,
   CreditCard,
   LogOut,
+  Truck,
+  ShieldCheck,
+  Settings,
+  Percent,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -16,24 +20,43 @@ import api from "../services/api";
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
+  const [settings, setSettings] = useState(null);
+
   const [loading, setLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] =
+    useState(true);
+
   const [loggingOut, setLoggingOut] = useState(false);
 
   const navigate = useNavigate();
 
+  /*
+  |--------------------------------------------------------------------------
+  | FETCH DASHBOARD
+  |--------------------------------------------------------------------------
+  */
+
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const response = await api.get("/admin/dashboard");
+        const response =
+          await api.get("/admin/dashboard");
 
         if (response.data.success) {
           setStats(response.data.stats);
         }
       } catch (error) {
-        console.error("Dashboard error:", error);
+        console.error(
+          "Dashboard error:",
+          error
+        );
 
-        if (error.response?.status === 401) {
-          navigate("/admin/login", { replace: true });
+        if (
+          error.response?.status === 401
+        ) {
+          navigate("/admin/login", {
+            replace: true,
+          });
         }
       } finally {
         setLoading(false);
@@ -43,28 +66,74 @@ const AdminDashboard = () => {
     fetchDashboard();
   }, [navigate]);
 
+  /*
+  |--------------------------------------------------------------------------
+  | FETCH STORE SETTINGS
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response =
+          await api.get("/settings");
+
+        if (response.data.success) {
+          setSettings(
+            response.data.settings
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Store settings error:",
+          error
+        );
+      } finally {
+        setSettingsLoading(false);
+      }
+    };
+
+    fetchSettings();
+  }, []);
+
+  /*
+  |--------------------------------------------------------------------------
+  | LOGOUT
+  |--------------------------------------------------------------------------
+  */
+
   const handleLogout = async () => {
     try {
       setLoggingOut(true);
 
       await api.post("/auth/logout");
 
-      navigate("/admin/login", { replace: true });
+      navigate("/admin/login", {
+        replace: true,
+      });
     } catch (error) {
-      console.error("Logout error:", error);
+      console.error(
+        "Logout error:",
+        error
+      );
 
-      // Even if the backend logout request fails,
-      // remove the local authentication data if your
-      // project stores any.
       localStorage.removeItem("admin");
       localStorage.removeItem("adminUser");
       localStorage.removeItem("token");
 
-      navigate("/admin/login", { replace: true });
+      navigate("/admin/login", {
+        replace: true,
+      });
     } finally {
       setLoggingOut(false);
     }
   };
+
+  /*
+  |--------------------------------------------------------------------------
+  | LOADING
+  |--------------------------------------------------------------------------
+  */
 
   if (loading) {
     return (
@@ -80,22 +149,34 @@ const AdminDashboard = () => {
     );
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | DASHBOARD CARDS
+  |--------------------------------------------------------------------------
+  */
+
   const cards = [
     {
       title: "Products",
-      value: stats?.totalProducts || 0,
+      value:
+        stats?.totalProducts || 0,
       icon: Package,
     },
+
     {
       title: "Customers",
-      value: stats?.totalCustomers || 0,
+      value:
+        stats?.totalCustomers || 0,
       icon: Users,
     },
+
     {
       title: "Orders",
-      value: stats?.totalOrders || 0,
+      value:
+        stats?.totalOrders || 0,
       icon: ShoppingCart,
     },
+
     {
       title: "Revenue",
       value: `₹${Number(
@@ -103,23 +184,75 @@ const AdminDashboard = () => {
       ).toLocaleString("en-IN")}`,
       icon: IndianRupee,
     },
+
     {
       title: "Pending Orders",
-      value: stats?.pendingOrders || 0,
+      value:
+        stats?.pendingOrders || 0,
       icon: ShoppingCart,
     },
+
     {
       title: "Low Stock",
-      value: stats?.lowStockProducts || 0,
+      value:
+        stats?.lowStockProducts || 0,
       icon: AlertTriangle,
     },
   ];
+
+  /*
+  |--------------------------------------------------------------------------
+  | SETTINGS VALUES
+  |--------------------------------------------------------------------------
+  */
+
+  const shippingFee = Number(
+    settings?.shippingFee || 0
+  );
+
+  const freeShippingThreshold =
+    Number(
+      settings?.freeShippingThreshold || 0
+    );
+
+  const gst = Number(
+    settings?.gst || 0
+  );
+
+  const codEnabled =
+    settings?.codEnabled !== false;
+
+  const codAdvanceEnabled =
+    settings?.codAdvanceEnabled === true;
+
+  const codAdvancePercentage =
+    Number(
+      settings?.codAdvancePercentage || 0
+    );
+
+  const codMinimumAdvance =
+    Number(
+      settings?.codMinimumAdvance || 0
+    );
+
+  const codMaximumOrderValue =
+    settings?.codMaximumOrderValue ===
+      null ||
+    settings?.codMaximumOrderValue ===
+      undefined
+      ? null
+      : Number(
+          settings.codMaximumOrderValue
+        );
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
 
-        {/* HEADER */}
+        {/* =====================================================
+            HEADER
+        ===================================================== */}
+
         <div className="mb-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.3em] text-gray-500">
@@ -131,12 +264,15 @@ const AdminDashboard = () => {
             </h1>
 
             <p className="mt-3 max-w-2xl text-gray-500">
-              Manage your FITFORGE store, products, customers,
-              orders, payments, inventory and homepage.
+              Manage your FITFORGE store,
+              products, customers, orders,
+              payments, inventory and
+              homepage.
             </p>
           </div>
 
-          {/* LOGOUT BUTTON */}
+          {/* LOGOUT */}
+
           <button
             type="button"
             onClick={handleLogout}
@@ -145,11 +281,16 @@ const AdminDashboard = () => {
           >
             <LogOut size={18} />
 
-            {loggingOut ? "LOGGING OUT..." : "LOGOUT"}
+            {loggingOut
+              ? "LOGGING OUT..."
+              : "LOGOUT"}
           </button>
         </div>
 
-        {/* STATS */}
+        {/* =====================================================
+            STATS
+        ===================================================== */}
+
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map((card) => {
             const Icon = card.icon;
@@ -179,7 +320,10 @@ const AdminDashboard = () => {
           })}
         </div>
 
-        {/* PAYMENT CONTROL */}
+        {/* =====================================================
+            PAYMENT CONTROL
+        ===================================================== */}
+
         <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-7">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -243,9 +387,305 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* QUICK ACTIONS */}
+        {/* =====================================================
+            SHIPPING + COD + MONEY CONTROL
+        ===================================================== */}
+
+        <div className="mt-8 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+
+          {/* SECTION HEADER */}
+
+          <div className="border-b border-gray-200 p-7">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-black text-white">
+                  <ShieldCheck size={20} />
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold tracking-[0.25em] text-gray-400">
+                    STORE FINANCIAL CONTROL
+                  </p>
+
+                  <h2 className="mt-1 text-2xl font-black">
+                    SHIPPING • COD • MONEY
+                  </h2>
+                </div>
+              </div>
+
+              <Link
+                to="/admin/settings"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-5 py-3 text-sm font-bold text-white transition hover:bg-gray-800"
+              >
+                <Settings size={17} />
+                MANAGE SETTINGS
+              </Link>
+            </div>
+
+            <p className="mt-4 max-w-3xl text-sm leading-6 text-gray-500">
+              Control shipping charges, free
+              shipping, GST, Cash on Delivery
+              security and payment-related
+              store rules from one place.
+            </p>
+          </div>
+
+          {/* CONTROL CARDS */}
+
+          {settingsLoading ? (
+            <div className="flex items-center justify-center p-10">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-black" />
+            </div>
+          ) : (
+            <div className="grid gap-5 p-7 sm:grid-cols-2 lg:grid-cols-3">
+
+              {/* SHIPPING FEE */}
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold tracking-wider text-gray-400">
+                      SHIPPING FEE
+                    </p>
+
+                    <p className="mt-2 text-2xl font-black">
+                      ₹
+                      {shippingFee.toLocaleString(
+                        "en-IN"
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white">
+                    <Truck size={18} />
+                  </div>
+                </div>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Standard delivery charge
+                </p>
+              </div>
+
+              {/* FREE SHIPPING */}
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold tracking-wider text-gray-400">
+                      FREE SHIPPING ABOVE
+                    </p>
+
+                    <p className="mt-2 text-2xl font-black">
+                      ₹
+                      {freeShippingThreshold.toLocaleString(
+                        "en-IN"
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white">
+                    <Truck size={18} />
+                  </div>
+                </div>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Orders at or above this value
+                  receive free shipping.
+                </p>
+              </div>
+
+              {/* GST */}
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold tracking-wider text-gray-400">
+                      GST / TAX
+                    </p>
+
+                    <p className="mt-2 text-2xl font-black">
+                      {gst}%
+                    </p>
+                  </div>
+
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white">
+                    <Percent size={18} />
+                  </div>
+                </div>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Applied by the checkout
+                  calculation.
+                </p>
+              </div>
+
+              {/* COD STATUS */}
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold tracking-wider text-gray-400">
+                      CASH ON DELIVERY
+                    </p>
+
+                    <p className="mt-2 text-2xl font-black">
+                      {codEnabled
+                        ? "ENABLED"
+                        : "DISABLED"}
+                    </p>
+                  </div>
+
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      codEnabled
+                        ? "bg-black text-white"
+                        : "bg-gray-200 text-gray-500"
+                    }`}
+                  >
+                    <ShieldCheck size={18} />
+                  </div>
+                </div>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Customer COD availability.
+                </p>
+              </div>
+
+              {/* COD ADVANCE */}
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold tracking-wider text-gray-400">
+                      COD SECURITY ADVANCE
+                    </p>
+
+                    <p className="mt-2 text-2xl font-black">
+                      {codAdvanceEnabled
+                        ? `${codAdvancePercentage}%`
+                        : "OFF"}
+                    </p>
+                  </div>
+
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white">
+                    <IndianRupee size={18} />
+                  </div>
+                </div>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Advance collected before
+                  COD order confirmation.
+                </p>
+              </div>
+
+              {/* MINIMUM ADVANCE */}
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold tracking-wider text-gray-400">
+                      MINIMUM COD ADVANCE
+                    </p>
+
+                    <p className="mt-2 text-2xl font-black">
+                      ₹
+                      {codMinimumAdvance.toLocaleString(
+                        "en-IN"
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white">
+                    <IndianRupee size={18} />
+                  </div>
+                </div>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Minimum advance required for
+                  eligible COD orders.
+                </p>
+              </div>
+
+              {/* MAX COD VALUE */}
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 sm:col-span-2 lg:col-span-1">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold tracking-wider text-gray-400">
+                      MAX COD ORDER VALUE
+                    </p>
+
+                    <p className="mt-2 text-2xl font-black">
+                      {codMaximumOrderValue ===
+                      null
+                        ? "NO LIMIT"
+                        : `₹${codMaximumOrderValue.toLocaleString(
+                            "en-IN"
+                          )}`}
+                    </p>
+                  </div>
+
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white">
+                    <ShieldCheck size={18} />
+                  </div>
+                </div>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Maximum order amount eligible
+                  for COD.
+                </p>
+              </div>
+
+            </div>
+          )}
+
+          {/* SECURITY FOOTER */}
+
+          <div className="border-t border-gray-200 bg-gray-50 px-7 py-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+              <div className="flex items-start gap-3">
+                <ShieldCheck
+                  size={18}
+                  className="mt-0.5 shrink-0"
+                />
+
+                <div>
+                  <p className="text-sm font-bold">
+                    Backend-controlled financial rules
+                  </p>
+
+                  <p className="mt-1 text-xs text-gray-500">
+                    Shipping, GST, COD and payment
+                    amounts are calculated and
+                    validated by the backend.
+                  </p>
+                </div>
+              </div>
+
+              <Link
+                to="/admin/settings"
+                className="inline-flex items-center justify-center gap-2 border border-black px-4 py-2 text-xs font-bold transition hover:bg-black hover:text-white"
+              >
+                <Settings size={15} />
+                EDIT CONTROLS
+              </Link>
+
+            </div>
+          </div>
+        </div>
+
+        {/* =====================================================
+            QUICK ACTIONS
+        ===================================================== */}
+
         <div className="mt-8 grid gap-6 lg:grid-cols-2">
+
+          {/* QUICK ACTIONS */}
+
           <div className="rounded-2xl border border-gray-200 bg-white p-7">
+
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-white">
                 <Sparkles size={18} />
@@ -263,6 +703,7 @@ const AdminDashboard = () => {
             </div>
 
             <div className="mt-6 grid grid-cols-2 gap-3">
+
               <Link
                 to="/admin/products"
                 className="flex items-center gap-2 border border-gray-200 p-4 font-bold transition hover:bg-black hover:text-white"
@@ -333,11 +774,24 @@ const AdminDashboard = () => {
                 <Tag size={17} />
                 COUPONS
               </Link>
+
+              <Link
+                to="/admin/settings"
+                className="flex items-center gap-2 border border-gray-200 p-4 font-bold transition hover:bg-black hover:text-white"
+              >
+                <Settings size={17} />
+                SETTINGS
+              </Link>
+
             </div>
           </div>
 
-          {/* STORE CONTROL */}
+          {/* =====================================================
+              STORE CONTROL
+          ===================================================== */}
+
           <div className="rounded-2xl bg-black p-7 text-white">
+
             <p className="text-xs tracking-[0.3em] text-gray-400">
               STORE CONTROL
             </p>
@@ -347,12 +801,16 @@ const AdminDashboard = () => {
             </h2>
 
             <p className="mt-3 leading-7 text-gray-400">
-              Control products, orders, customers, payments,
-              inventory, promotions and homepage content from
-              the FITFORGE admin panel.
+              Control products, orders,
+              customers, payments, inventory,
+              promotions, homepage content,
+              shipping, COD and financial
+              settings from the FITFORGE
+              admin panel.
             </p>
 
             <div className="mt-6 flex flex-wrap gap-3">
+
               <Link
                 to="/admin/homepage"
                 className="inline-flex items-center gap-2 border border-white px-5 py-3 text-sm font-bold transition hover:bg-white hover:text-black"
@@ -368,13 +826,28 @@ const AdminDashboard = () => {
                 <CreditCard size={17} />
                 PAYMENTS
               </Link>
+
+              <Link
+                to="/admin/settings"
+                className="inline-flex items-center gap-2 border border-white px-5 py-3 text-sm font-bold transition hover:bg-white hover:text-black"
+              >
+                <Settings size={17} />
+                STORE SETTINGS
+              </Link>
+
             </div>
           </div>
         </div>
 
-        {/* LOW STOCK */}
-        {Number(stats?.lowStockProducts || 0) > 0 && (
+        {/* =====================================================
+            LOW STOCK
+        ===================================================== */}
+
+        {Number(
+          stats?.lowStockProducts || 0
+        ) > 0 && (
           <div className="mt-8 flex items-center gap-4 rounded-2xl border border-orange-200 bg-orange-50 p-5">
+
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white">
               <AlertTriangle size={20} />
             </div>
@@ -386,8 +859,9 @@ const AdminDashboard = () => {
 
               <p className="mt-1 text-sm text-orange-700">
                 {stats.lowStockProducts} product
-                {stats.lowStockProducts === 1 ? "" : "s"} need
-                stock attention.
+                {stats.lowStockProducts === 1
+                  ? ""
+                  : "s"} need stock attention.
               </p>
             </div>
 
@@ -397,8 +871,10 @@ const AdminDashboard = () => {
             >
               VIEW INVENTORY
             </Link>
+
           </div>
         )}
+
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ const orderItemSchema = new mongoose.Schema(
     image: {
       type: String,
       default: "",
+      trim: true,
     },
 
     price: {
@@ -42,57 +43,24 @@ const orderItemSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
-  },
-  {
-    _id: false,
-  }
-);
 
-const shippingAddressSchema = new mongoose.Schema(
-  {
-    fullName: {
-      type: String,
+    subtotal: {
+      type: Number,
       required: true,
-      trim: true,
-    },
-
-    phone: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    addressLine: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    city: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    state: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    pincode: {
-      type: String,
-      required: true,
-      trim: true,
+      min: 0,
     },
   },
   {
-    _id: false,
+    _id: true,
   }
 );
 
 const orderSchema = new mongoose.Schema(
   {
+    /* =========================
+       ORDER NUMBER
+    ========================= */
+
     orderNumber: {
       type: String,
       required: true,
@@ -101,12 +69,20 @@ const orderSchema = new mongoose.Schema(
       trim: true,
     },
 
+    /* =========================
+       CUSTOMER
+    ========================= */
+
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
       index: true,
     },
+
+    /* =========================
+       PRODUCTS
+    ========================= */
 
     items: {
       type: [orderItemSchema],
@@ -118,10 +94,57 @@ const orderSchema = new mongoose.Schema(
       },
     },
 
+    /* =========================
+       SHIPPING ADDRESS
+    ========================= */
+
     shippingAddress: {
-      type: shippingAddressSchema,
-      required: true,
+      fullName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      phone: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      addressLine: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      city: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      state: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      pincode: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      country: {
+        type: String,
+        default: "India",
+        trim: true,
+      },
     },
+
+    /* =========================
+       ORDER AMOUNTS
+    ========================= */
 
     subtotal: {
       type: Number,
@@ -131,14 +154,23 @@ const orderSchema = new mongoose.Schema(
 
     shippingFee: {
       type: Number,
-      default: 0,
+      required: true,
       min: 0,
+      default: 0,
     },
 
     discount: {
       type: Number,
-      default: 0,
+      required: true,
       min: 0,
+      default: 0,
+    },
+
+    tax: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
     },
 
     totalAmount: {
@@ -147,12 +179,73 @@ const orderSchema = new mongoose.Schema(
       min: 0,
     },
 
+    /* =========================
+       COD / ADVANCE PAYMENT
+    ========================= */
+
+    /*
+      Amount paid online before COD
+    */
+
+    advanceAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    /*
+      Amount customer must pay
+      when the order is delivered.
+    */
+
+    remainingAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    /*
+      For normal prepaid orders:
+      NotRequired
+
+      For COD without advance:
+      Pending
+
+      After Razorpay advance payment:
+      Paid
+
+      If advance payment fails:
+      Failed
+
+      If advance is refunded:
+      Refunded
+    */
+
+    advancePaymentStatus: {
+      type: String,
+      enum: [
+        "NotRequired",
+        "Pending",
+        "Paid",
+        "Failed",
+        "Refunded",
+      ],
+      default: "NotRequired",
+    },
+
+    /* =========================
+       PAYMENT METHOD
+    ========================= */
+
     paymentMethod: {
       type: String,
-      enum: ["COD", "RAZORPAY"],
-      default: "COD",
+      enum: ["Razorpay", "COD"],
       required: true,
     },
+
+    /* =========================
+       PAYMENT STATUS
+    ========================= */
 
     paymentStatus: {
       type: String,
@@ -163,8 +256,11 @@ const orderSchema = new mongoose.Schema(
         "Refunded",
       ],
       default: "Pending",
-      index: true,
     },
+
+    /* =========================
+       GENERAL PAYMENT ID
+    ========================= */
 
     paymentId: {
       type: String,
@@ -172,16 +268,15 @@ const orderSchema = new mongoose.Schema(
       trim: true,
     },
 
-    /*
-    --------------------------------------------
-    RAZORPAY DETAILS
-    --------------------------------------------
-    */
+    /* =========================
+       RAZORPAY
+    ========================= */
 
     razorpayOrderId: {
       type: String,
       default: "",
       trim: true,
+      index: true,
     },
 
     razorpayPaymentId: {
@@ -195,6 +290,10 @@ const orderSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+
+    /* =========================
+       ORDER STATUS
+    ========================= */
 
     orderStatus: {
       type: String,
@@ -212,11 +311,9 @@ const orderSchema = new mongoose.Schema(
       index: true,
     },
 
-    /*
-    --------------------------------------------
-    COUPON
-    --------------------------------------------
-    */
+    /* =========================
+       COUPON
+    ========================= */
 
     couponCode: {
       type: String,
@@ -225,16 +322,28 @@ const orderSchema = new mongoose.Schema(
       uppercase: true,
     },
 
+    /* =========================
+       NOTES
+    ========================= */
+
     notes: {
       type: String,
       default: "",
       trim: true,
     },
 
+    /* =========================
+       CANCELLATION
+    ========================= */
+
     cancelledAt: {
       type: Date,
       default: null,
     },
+
+    /* =========================
+       DELIVERY
+    ========================= */
 
     deliveredAt: {
       type: Date,
@@ -245,6 +354,29 @@ const orderSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+/* =========================
+   INDEXES
+========================= */
+
+orderSchema.index({
+  user: 1,
+  createdAt: -1,
+});
+
+orderSchema.index({
+  paymentStatus: 1,
+  orderStatus: 1,
+});
+
+orderSchema.index({
+  paymentMethod: 1,
+  advancePaymentStatus: 1,
+});
+
+/* =========================
+   MODEL
+========================= */
 
 const Order =
   mongoose.models.Order ||

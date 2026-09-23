@@ -2,6 +2,13 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
+
+// =====================================================
+// LOAD ENVIRONMENT VARIABLES
+// =====================================================
+
+dotenv.config();
 
 // =====================================================
 // DATABASE
@@ -24,7 +31,7 @@ import wishlistRoutes from "./routes/wishlist.routes.js";
 import settingsRoutes from "./routes/settings.routes.js";
 
 // =====================================================
-// COUPON CONTROLLER + AUTH
+// COUPON
 // =====================================================
 
 import { validateCoupon } from "./controllers/coupon.controller.js";
@@ -51,24 +58,34 @@ import adminPaymentRoutes from "./routes/adminPayment.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 
 // =====================================================
-// ENVIRONMENT
-// =====================================================
-
-dotenv.config();
-
-// =====================================================
 // APP
 // =====================================================
 
 const app = express();
 
-const PORT = process.env.PORT || 8000;
+const PORT = Number(process.env.PORT) || 8000;
+const NODE_ENV = process.env.NODE_ENV || "development";
+
+// Render / reverse proxy support
+app.set("trust proxy", 1);
 
 // =====================================================
-// DATABASE
+// DATABASE CONNECTION
 // =====================================================
 
 connectDB();
+
+// =====================================================
+// SECURITY HEADERS
+// =====================================================
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: {
+      policy: "cross-origin",
+    },
+  }),
+);
 
 // =====================================================
 // CORS
@@ -77,6 +94,7 @@ connectDB();
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:5173",
+  "http://localhost:5174",
 ].filter(Boolean);
 
 console.log("Allowed CORS origins:", allowedOrigins);
@@ -84,6 +102,8 @@ console.log("Allowed CORS origins:", allowedOrigins);
 app.use(
   cors({
     origin: (origin, callback) => {
+      // Allow requests without an Origin header.
+      // Useful for curl, health checks and server-to-server requests.
       if (!origin) {
         return callback(null, true);
       }
@@ -92,12 +112,27 @@ app.use(
         return callback(null, true);
       }
 
-      console.log("Blocked CORS origin:", origin);
+      console.warn("Blocked CORS origin:", origin);
 
       return callback(new Error("Not allowed by CORS"));
     },
 
     credentials: true,
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+    ],
   }),
 );
 
@@ -105,11 +140,16 @@ app.use(
 // BODY PARSERS
 // =====================================================
 
-app.use(express.json());
+app.use(
+  express.json({
+    limit: "2mb",
+  }),
+);
 
 app.use(
   express.urlencoded({
     extended: true,
+    limit: "2mb",
   }),
 );
 
@@ -124,7 +164,15 @@ app.use(cookieParser());
 // =====================================================
 
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.originalUrl}`);
+  const startTime = Date.now();
+
+  res.on("finish", () => {
+    const duration = Date.now() - startTime;
+
+    console.log(
+      `${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`,
+    );
+  });
 
   next();
 });
@@ -135,61 +183,84 @@ app.use((req, res, next) => {
 
 console.log("");
 console.log("======================================");
-console.log("FITFORGE BACKEND");
+console.log("          FITFORGE BACKEND");
 console.log("======================================");
 
-console.log("Environment:", process.env.NODE_ENV || "development");
-
+console.log("Environment:", NODE_ENV);
 console.log("Port:", PORT);
 
-console.log("Frontend URL:", process.env.FRONTEND_URL || "Not configured");
+console.log(
+  "Frontend URL:",
+  process.env.FRONTEND_URL || "Missing",
+);
 
-console.log("MongoDB URI:", process.env.MONGO_URI ? "Loaded" : "Missing");
+console.log(
+  "MongoDB:",
+  process.env.MONGO_URI ? "Loaded" : "Missing",
+);
 
-console.log("JWT Secret:", process.env.JWT_SECRET ? "Loaded" : "Missing");
+console.log(
+  "JWT Secret:",
+  process.env.JWT_SECRET ? "Loaded" : "Missing",
+);
 
 console.log(
   "Cloudinary Cloud Name:",
-  process.env.CLOUDINARY_CLOUD_NAME ? "Loaded" : "Missing",
+  process.env.CLOUDINARY_CLOUD_NAME
+    ? "Loaded"
+    : "Missing",
 );
 
 console.log(
   "Cloudinary API Key:",
-  process.env.CLOUDINARY_API_KEY ? "Loaded" : "Missing",
+  process.env.CLOUDINARY_API_KEY
+    ? "Loaded"
+    : "Missing",
 );
 
 console.log(
   "Cloudinary API Secret:",
-  process.env.CLOUDINARY_API_SECRET ? "Loaded" : "Missing",
+  process.env.CLOUDINARY_API_SECRET
+    ? "Loaded"
+    : "Missing",
 );
 
 console.log(
   "Razorpay Key ID:",
-  process.env.RAZORPAY_KEY_ID ? process.env.RAZORPAY_KEY_ID : "Missing",
+  process.env.RAZORPAY_KEY_ID
+    ? "Loaded"
+    : "Missing",
 );
 
 console.log(
   "Razorpay Secret:",
-  process.env.RAZORPAY_KEY_SECRET ? "Loaded" : "Missing",
+  process.env.RAZORPAY_KEY_SECRET
+    ? "Loaded"
+    : "Missing",
 );
 
 console.log("======================================");
 console.log("");
 
 // =====================================================
-// HEALTH CHECK
+// ROOT HEALTH CHECK
 // =====================================================
 
 app.get("/", (req, res) => {
-  res.status(200).json({
+  return res.status(200).json({
     success: true,
     message: "FITFORGE API is running",
     version: "1.0.0",
+    environment: NODE_ENV,
   });
 });
 
+// =====================================================
+// API HEALTH CHECK
+// =====================================================
+
 app.get("/api/health", (req, res) => {
-  res.status(200).json({
+  return res.status(200).json({
     success: true,
     message: "FITFORGE backend is healthy",
     timestamp: new Date().toISOString(),
@@ -201,23 +272,18 @@ app.get("/api/health", (req, res) => {
 // =====================================================
 
 // Authentication
-
 app.use("/api/auth", authRoutes);
 
 // Products
-
 app.use("/api/products", productRoutes);
 
 // Categories
-
 app.use("/api/categories", categoryRoutes);
 
 // Cart
-
 app.use("/api/cart", cartRoutes);
 
 // Wishlist
-
 app.use("/api/wishlist", wishlistRoutes);
 
 // =====================================================
@@ -226,80 +292,103 @@ app.use("/api/wishlist", wishlistRoutes);
 //
 // POST /api/coupons/validate
 //
-// This is registered directly here instead of through
-// coupon.routes.js so there is no router ambiguity.
-//
 
-app.post("/api/coupons/validate", authenticateUser, validateCoupon);
+app.post(
+  "/api/coupons/validate",
+  authenticateUser,
+  validateCoupon,
+);
 
-console.log("✅ POST /api/coupons/validate registered");
+console.log(
+  "✅ POST /api/coupons/validate registered",
+);
 
 // Orders
-
 app.use("/api/orders", orderRoutes);
 
 // Payments
-
 app.use("/api/payments", paymentRoutes);
 
 // Homepage
-
 app.use("/api/homepage", homepageRoutes);
+
+// Store Settings
+app.use("/api/settings", settingsRoutes);
 
 // =====================================================
 // ADMIN APIs
 // =====================================================
 
 // General Admin
-
 app.use("/api/admin", adminRoutes);
 
-// Admin Products
+// Products
+app.use(
+  "/api/admin/products",
+  adminProductRoutes,
+);
 
-app.use("/api/admin/products", adminProductRoutes);
+// Orders
+app.use(
+  "/api/admin/orders",
+  adminOrderRoutes,
+);
 
-// Admin Orders
+// Customers
+app.use(
+  "/api/admin/customers",
+  adminCustomerRoutes,
+);
 
-app.use("/api/admin/orders", adminOrderRoutes);
+// Inventory
+app.use(
+  "/api/admin/inventory",
+  adminInventoryRoutes,
+);
 
-// Admin Customers
+// Promotions
+app.use(
+  "/api/admin/promotions",
+  adminPromotionRoutes,
+);
 
-app.use("/api/admin/customers", adminCustomerRoutes);
+// Coupons
+app.use(
+  "/api/admin/coupons",
+  adminCouponRoutes,
+);
 
-// Admin Inventory
+// Reviews
+app.use(
+  "/api/admin/reviews",
+  adminReviewRoutes,
+);
 
-app.use("/api/admin/inventory", adminInventoryRoutes);
-
-// Admin Promotions
-
-app.use("/api/admin/promotions", adminPromotionRoutes);
-
-// Admin Coupons
-
-app.use("/api/admin/coupons", adminCouponRoutes);
-
-// Admin Reviews
-
-app.use("/api/admin/reviews", adminReviewRoutes);
-
-app.use("/api/admin/payments", adminPaymentRoutes);
+// Payments
+app.use(
+  "/api/admin/payments",
+  adminPaymentRoutes,
+);
 
 // =====================================================
 // UPLOAD APIs
 // =====================================================
 
-app.use("/api/uploads", uploadRoutes);
-
-app.use("/api/settings", settingsRoutes);
+app.use(
+  "/api/uploads",
+  uploadRoutes,
+);
 
 // =====================================================
 // 404 HANDLER
 // =====================================================
 
 app.use((req, res) => {
-  console.log(`❌ Route not found: ${req.method} ${req.originalUrl}`);
+  console.warn(
+    `❌ Route not found: ${req.method} ${req.originalUrl}`,
+  );
 
-  res.status(404).json({
+  return res.status(404).json({
     success: false,
     message: `Route not found: ${req.method} ${req.originalUrl}`,
   });
@@ -309,79 +398,231 @@ app.use((req, res) => {
 // GLOBAL ERROR HANDLER
 // =====================================================
 
-app.use((error, req, res, next) => {
-  console.error("");
-  console.error("======================================");
-  console.error("SERVER ERROR");
-  console.error("======================================");
+app.use(
+  (error, req, res, next) => {
+    console.error("");
+    console.error("======================================");
+    console.error("           SERVER ERROR");
+    console.error("======================================");
 
-  console.error("Message:", error.message);
+    console.error(
+      "Method:",
+      req.method,
+    );
 
-  if (error.stack) {
-    console.error(error.stack);
-  }
+    console.error(
+      "URL:",
+      req.originalUrl,
+    );
 
-  console.error("======================================");
-  console.error("");
+    console.error(
+      "Message:",
+      error.message,
+    );
 
-  // CORS error
+    // Show stack only during development.
+    if (
+      NODE_ENV !== "production" &&
+      error.stack
+    ) {
+      console.error(error.stack);
+    }
 
-  if (error.message === "Not allowed by CORS") {
-    return res.status(403).json({
+    console.error("======================================");
+    console.error("");
+
+    // ---------------------------------------------
+    // CORS ERROR
+    // ---------------------------------------------
+
+    if (
+      error.message ===
+      "Not allowed by CORS"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "CORS policy blocked this request",
+      });
+    }
+
+    // ---------------------------------------------
+    // INVALID JSON
+    // ---------------------------------------------
+
+    if (
+      error instanceof SyntaxError &&
+      error.status === 400 &&
+      error.type === "entity.parse.failed"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid JSON request body",
+      });
+    }
+
+    // ---------------------------------------------
+    // MULTER ERROR
+    // ---------------------------------------------
+
+    if (
+      error.name === "MulterError"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          error.message ||
+          "File upload error",
+      });
+    }
+
+    // ---------------------------------------------
+    // MONGOOSE VALIDATION ERROR
+    // ---------------------------------------------
+
+    if (
+      error.name === "ValidationError"
+    ) {
+      const errors =
+        Object.values(
+          error.errors || {},
+        ).map(
+          (item) => item.message,
+        );
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Validation error",
+        errors,
+      });
+    }
+
+    // ---------------------------------------------
+    // MONGOOSE CAST ERROR
+    // ---------------------------------------------
+
+    if (
+      error.name === "CastError"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid resource ID",
+      });
+    }
+
+    // ---------------------------------------------
+    // DUPLICATE MONGODB KEY
+    // ---------------------------------------------
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "A record with this value already exists",
+      });
+    }
+
+    // ---------------------------------------------
+    // DEFAULT ERROR
+    // ---------------------------------------------
+
+    const statusCode =
+      error.statusCode ||
+      error.status ||
+      500;
+
+    return res.status(statusCode).json({
       success: false,
-      message: "CORS policy blocked this request",
+      message:
+        NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message ||
+            "Internal server error",
     });
-  }
-
-  // JSON parsing error
-
-  if (
-    error instanceof SyntaxError &&
-    error.status === 400 &&
-    error.type === "entity.parse.failed"
-  ) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid JSON request body",
-    });
-  }
-
-  // Multer error
-
-  if (error.name === "MulterError") {
-    return res.status(400).json({
-      success: false,
-      message: error.message || "File upload error",
-    });
-  }
-
-  // Default error
-
-  return res.status(error.statusCode || 500).json({
-    success: false,
-    message: error.message || "Internal server error",
-  });
-});
+  },
+);
 
 // =====================================================
 // START SERVER
 // =====================================================
 
-app.listen(PORT, () => {
+const server = app.listen(
+  PORT,
+  "0.0.0.0",
+  () => {
+    console.log("");
+    console.log("======================================");
+    console.log("     🚀 FITFORGE BACKEND STARTED");
+    console.log("======================================");
+
+    console.log(
+      `Environment: ${NODE_ENV}`,
+    );
+
+    console.log(
+      `Port: ${PORT}`,
+    );
+
+    console.log(
+      `❤️ Health: http://localhost:${PORT}/api/health`,
+    );
+
+    console.log(
+      `🎟️ Coupon: POST http://localhost:${PORT}/api/coupons/validate`,
+    );
+
+    console.log(
+      `☁️ Uploads: http://localhost:${PORT}/api/uploads/product-images`,
+    );
+
+    console.log("======================================");
+    console.log("");
+  },
+);
+
+// =====================================================
+// GRACEFUL SHUTDOWN
+// =====================================================
+
+const shutdown = (signal) => {
   console.log("");
-  console.log(`🚀 FITFORGE backend running on port ${PORT}`);
-
-  console.log(`🌐 http://localhost:${PORT}`);
-
-  console.log(`❤️ Health: http://localhost:${PORT}/api/health`);
-
   console.log(
-    `🎟️ Coupon API: POST http://localhost:${PORT}/api/coupons/validate`,
+    `⚠️ ${signal} received.`,
   );
 
   console.log(
-    `☁️ Upload API: http://localhost:${PORT}/api/uploads/product-images`,
+    "Shutting down FITFORGE backend...",
   );
 
-  console.log("");
-});
+  server.close(() => {
+    console.log(
+      "HTTP server closed successfully.",
+    );
+
+    process.exit(0);
+  });
+
+  // Force shutdown after 10 seconds.
+  setTimeout(() => {
+    console.error(
+      "❌ Forced shutdown after 10 seconds.",
+    );
+
+    process.exit(1);
+  }, 10000).unref();
+};
+
+// Render deployment/restart
+process.on(
+  "SIGTERM",
+  () => shutdown("SIGTERM"),
+);
+
+// Local Ctrl+C
+process.on(
+  "SIGINT",
+  () => shutdown("SIGINT"),
+);

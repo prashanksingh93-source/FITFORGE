@@ -3,44 +3,47 @@ import mongoose from "mongoose";
 
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
-import Coupon from "../models/Coupon.js";
 import Payment from "../models/Payment.js";
+import Coupon from "../models/Coupon.js";
+
 import razorpay from "../services/razorpay.service.js";
 
-/*
-====================================================
-HELPERS
-====================================================
-*/
+/* =========================================================
+   HELPERS
+========================================================= */
 
-const normalizeCouponCode = (code) => {
-  if (!code) return "";
+const isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
 
-  return String(code)
-    .trim()
-    .toUpperCase();
+const roundMoney = (value) => {
+  return Number(Number(value || 0).toFixed(2));
 };
 
 /*
-====================================================
-CREATE RAZORPAY ORDER
-POST /api/payments/razorpay/order
-====================================================
-*/
+  Razorpay works in the smallest currency unit.
 
-export const createRazorpayOrder = async (req, res) => {
+  For INR:
+  ₹100 = 10000 paise
+*/
+const rupeesToPaise = (amount) => {
+  return Math.round(Number(amount) * 100);
+};
+
+const paiseToRupees = (amount) => {
+  return Number(Number(amount || 0) / 100);
+};
+
+/* =========================================================
+   CREATE RAZORPAY ORDER
+========================================================= */
+
+export const createRazorpayOrder = async (
+  req,
+  res
+) => {
   try {
     const { orderId } = req.body;
-
-    console.log(
-      "\n========== RAZORPAY CREATE ORDER =========="
-    );
-
-    /*
-    --------------------------------------------
-    Validate order ID
-    --------------------------------------------
-    */
 
     if (!orderId) {
       return res.status(400).json({
@@ -49,23 +52,18 @@ export const createRazorpayOrder = async (req, res) => {
       });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    if (!isValidObjectId(orderId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid order ID",
       });
     }
 
-    /*
-    --------------------------------------------
-    Find customer's order
-    --------------------------------------------
-    */
-
-    const order = await Order.findOne({
-      _id: orderId,
-      user: req.user._id,
-    });
+    const order =
+      await Order.findOne({
+        _id: orderId,
+        user: req.user._id,
+      });
 
     if (!order) {
       return res.status(404).json({
@@ -74,168 +72,200 @@ export const createRazorpayOrder = async (req, res) => {
       });
     }
 
-    console.log(
-      "User:",
-      req.user._id.toString()
-    );
-
-    console.log(
-      "FITFORGE order:",
-      order.orderNumber
-    );
-
-    console.log(
-      "Order total:",
-      order.totalAmount
-    );
-
-    /*
-    --------------------------------------------
-    Only Razorpay orders
-    --------------------------------------------
-    */
-
-    if (order.paymentMethod !== "RAZORPAY") {
-      return res.status(400).json({
-        success: false,
-        message:
-          "This order is not a Razorpay order",
-      });
-    }
-
-    /*
-    --------------------------------------------
-    Prevent duplicate payment
-    --------------------------------------------
-    */
-
-    if (order.paymentStatus === "Paid") {
-      return res.status(400).json({
-        success: false,
-        message:
-          "This order has already been paid",
-      });
-    }
-
-    /*
-    --------------------------------------------
-    Validate order amount
-    --------------------------------------------
-    */
-
-    const amount = Number(
-      order.totalAmount
-    );
+    /* =====================================================
+       CHECK ORDER STATUS
+    ===================================================== */
 
     if (
-      !Number.isFinite(amount) ||
-      amount <= 0
+      [
+        "Cancelled",
+        "Refunded",
+        "Delivered",
+      ].includes(order.orderStatus)
     ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid order amount",
+        message:
+          "Payment cannot be created for this order",
       });
     }
 
-    const amountInPaise =
-      Math.round(amount * 100);
+    /* =====================================================
+       ALREADY PAID
+    ===================================================== */
 
-    /*
-    ====================================================
-    EXISTING RAZORPAY ORDER
-    ====================================================
-    */
+    if (
+      order.paymentMethod === "Razorpay" &&
+      order.paymentStatus === "Paid"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Order has already been paid",
+      });
+    }
 
-    if (order.razorpayOrderId) {
+    if (
+      order.paymentMethod === "COD" &&
+      order.advancePaymentStatus === "Paid"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "COD advance payment has already been completed",
+      });
+    }
+
+    /* =====================================================
+       CHECK PAYMENT METHOD
+    ===================================================== */
+
+    if (
+      order.paymentMethod !== "Razorpay" &&
+      order.paymentMethod !== "COD"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment method",
+      });
+    }
+
+    /* =====================================================
+       DETERMINE PAYMENT AMOUNT
+    ===================================================== */
+
+    let paymentAmount = 0;
+
+    if (order.paymentMethod === "Razorpay") {
       /*
-      --------------------------------------------
-      Make sure a Payment record exists
-      --------------------------------------------
+        Full prepaid order
+      */
+      paymentAmount = roundMoney(
+        order.totalAmount
+      );
+    } else {
+      /*
+        COD:
+        Customer pays only the advance online.
       */
 
-      await Payment.findOneAndUpdate(
-        {
-          order: order._id,
-        },
-        {
-          $setOnInsert: {
-            order: order._id,
-            user: req.user._id,
-            provider: "Razorpay",
-            razorpayOrderId:
-              order.razorpayOrderId,
-            amount,
-            currency: "INR",
-            status: "created",
-          },
-        },
-        {
-          upsert: true,
-          new: true,
-          setDefaultsOnInsert: true,
-        }
+      paymentAmount = roundMoney(
+        order.advanceAmount
       );
 
-      return res.status(200).json({
-        success: true,
-        message:
-          "Existing Razorpay order returned",
+      if (paymentAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "No online advance payment is required for this COD order",
+        });
+      }
+    }
 
-        razorpayOrder: {
-          id: order.razorpayOrderId,
-          amount: amountInPaise,
-          currency: "INR",
-        },
-
-        keyId:
-          process.env.RAZORPAY_KEY_ID,
+    if (paymentAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment amount",
       });
     }
 
-    /*
-    ====================================================
-    CREATE RAZORPAY ORDER
-    ====================================================
-    */
+    /* =====================================================
+       EXISTING RAZORPAY ORDER
+    ===================================================== */
+
+    if (order.razorpayOrderId) {
+      try {
+        const existingRazorpayOrder =
+          await razorpay.orders.fetch(
+            order.razorpayOrderId
+          );
+
+        const expectedPaise =
+          rupeesToPaise(paymentAmount);
+
+        /*
+          Only reuse the Razorpay order if the amount
+          exactly matches the current backend amount.
+        */
+
+        if (
+          Number(existingRazorpayOrder.amount) ===
+          expectedPaise &&
+          existingRazorpayOrder.currency ===
+            "INR"
+        ) {
+          return res.status(200).json({
+            success: true,
+            message:
+              "Razorpay order already exists",
+
+            razorpayOrder:
+              existingRazorpayOrder,
+
+            keyId:
+              process.env.RAZORPAY_KEY_ID,
+
+            amount:
+              paymentAmount,
+
+            paymentAmount,
+
+            paymentType:
+              order.paymentMethod ===
+              "COD"
+                ? "COD_ADVANCE"
+                : "FULL_PAYMENT",
+          });
+        }
+      } catch (error) {
+        console.warn(
+          "Existing Razorpay order could not be fetched. Creating a new one."
+        );
+      }
+    }
+
+    /* =====================================================
+       CREATE RAZORPAY ORDER
+    ===================================================== */
 
     const razorpayOrder =
       await razorpay.orders.create({
-        amount: amountInPaise,
+        amount:
+          rupeesToPaise(paymentAmount),
 
         currency: "INR",
 
         receipt:
-          order.orderNumber ||
-          `FITFORGE_${Date.now()}`,
+          order.orderNumber,
 
         notes: {
           fitforgeOrderId:
             order._id.toString(),
 
           orderNumber:
-            order.orderNumber || "",
+            order.orderNumber,
 
-          userId:
+          paymentType:
+            order.paymentMethod === "COD"
+              ? "COD_ADVANCE"
+              : "FULL_PAYMENT",
+
+          customerId:
             req.user._id.toString(),
         },
       });
 
-    /*
-    --------------------------------------------
-    Store Razorpay order ID in Order
-    --------------------------------------------
-    */
+    /* =====================================================
+       SAVE RAZORPAY ORDER ID
+    ===================================================== */
 
     order.razorpayOrderId =
       razorpayOrder.id;
 
     await order.save();
 
-    /*
-    ====================================================
-    CREATE PAYMENT RECORD
-    ====================================================
-    */
+    /* =====================================================
+       CREATE / UPDATE PAYMENT RECORD
+    ===================================================== */
 
     await Payment.findOneAndUpdate(
       {
@@ -244,17 +274,24 @@ export const createRazorpayOrder = async (req, res) => {
       {
         $set: {
           user: req.user._id,
+          order: order._id,
 
-          provider: "Razorpay",
-
-          razorpayOrderId:
-            razorpayOrder.id,
-
-          amount,
+          amount: paymentAmount,
 
           currency: "INR",
 
           status: "created",
+
+          razorpayOrderId:
+            razorpayOrder.id,
+
+          paymentMethod:
+            order.paymentMethod,
+
+          paymentType:
+            order.paymentMethod === "COD"
+              ? "COD_ADVANCE"
+              : "FULL_PAYMENT",
         },
       },
       {
@@ -264,135 +301,103 @@ export const createRazorpayOrder = async (req, res) => {
       }
     );
 
-    console.log(
-      "Razorpay order created:",
-      razorpayOrder.id
-    );
-
-    console.log(
-      "Payment record created"
-    );
-
-    console.log(
-      "============================================\n"
-    );
-
-    return res.status(200).json({
+    return res.status(201).json({
       success: true,
 
       message:
-        "Razorpay order created successfully",
+        order.paymentMethod === "COD"
+          ? "COD advance payment created"
+          : "Razorpay payment created",
 
       razorpayOrder,
 
       keyId:
         process.env.RAZORPAY_KEY_ID,
+
+      amount:
+        paymentAmount,
+
+      paymentAmount,
+
+      paymentType:
+        order.paymentMethod === "COD"
+          ? "COD_ADVANCE"
+          : "FULL_PAYMENT",
+
+      order: {
+        _id: order._id,
+        orderNumber:
+          order.orderNumber,
+
+        totalAmount:
+          order.totalAmount,
+
+        advanceAmount:
+          order.advanceAmount,
+
+        remainingAmount:
+          order.remainingAmount,
+      },
     });
   } catch (error) {
     console.error(
-      "\n========== RAZORPAY CREATE ERROR =========="
+      "Create Razorpay order error:",
+      error
     );
 
-    console.error(
-      "Name:",
-      error?.name
-    );
-
-    console.error(
-      "Message:",
-      error?.message
-    );
-
-    console.error(
-      "Status:",
-      error?.statusCode
-    );
-
-    console.error(
-      "Description:",
-      error?.error?.description
-    );
-
-    console.error(
-      "============================================\n"
-    );
-
-    return res.status(
-      error?.statusCode || 500
-    ).json({
+    return res.status(500).json({
       success: false,
-
       message:
-        error?.error?.description ||
-        error?.message ||
-        "Failed to create Razorpay order",
+        "Failed to create Razorpay payment",
     });
   }
 };
 
-/*
-====================================================
-VERIFY RAZORPAY PAYMENT
-POST /api/payments/razorpay/verify
-====================================================
-*/
+/* =========================================================
+   VERIFY RAZORPAY PAYMENT
+========================================================= */
 
 export const verifyRazorpayPayment = async (
   req,
   res
 ) => {
+  const {
+    orderId,
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature,
+  } = req.body;
+
   try {
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature,
-      orderId,
-    } = req.body;
-
-    console.log(
-      "\n========== RAZORPAY PAYMENT VERIFY =========="
-    );
-
-    /*
-    ====================================================
-    VALIDATE REQUEST
-    ====================================================
-    */
+    /* =====================================================
+       VALIDATION
+    ===================================================== */
 
     if (
+      !orderId ||
       !razorpay_order_id ||
       !razorpay_payment_id ||
-      !razorpay_signature ||
-      !orderId
+      !razorpay_signature
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "Payment verification data is incomplete",
+          "Incomplete Razorpay payment information",
       });
     }
 
-    if (
-      !mongoose.Types.ObjectId.isValid(
-        orderId
-      )
-    ) {
+    if (!isValidObjectId(orderId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid order ID",
       });
     }
 
-    /*
-    ====================================================
-    FIND CUSTOMER ORDER
-    ====================================================
-    */
-
-    const order = await Order.findOne({
-      _id: orderId,
-      user: req.user._id,
-    });
+    const order =
+      await Order.findOne({
+        _id: orderId,
+        user: req.user._id,
+      });
 
     if (!order) {
       return res.status(404).json({
@@ -401,131 +406,87 @@ export const verifyRazorpayPayment = async (
       });
     }
 
-    /*
-    ====================================================
-    VERIFY RAZORPAY ORDER ID
-    ====================================================
-    */
+    /* =====================================================
+       DUPLICATE PAYMENT PROTECTION
+    ===================================================== */
 
     if (
-      order.razorpayOrderId &&
-      order.razorpayOrderId !==
-        razorpay_order_id
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Razorpay order mismatch",
-      });
-    }
-
-    /*
-    ====================================================
-    VERIFY PAYMENT METHOD
-    ====================================================
-    */
-
-    if (
-      order.paymentMethod !== "RAZORPAY"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "This order does not use Razorpay",
-      });
-    }
-
-    /*
-    ====================================================
-    PREVENT DUPLICATE PROCESSING
-    ====================================================
-    */
-
-    if (
+      order.paymentMethod === "Razorpay" &&
       order.paymentStatus === "Paid"
     ) {
-      /*
-      --------------------------------------------
-      Make sure Payment record also exists
-      --------------------------------------------
-      */
-
-      await Payment.findOneAndUpdate(
-        {
-          order: order._id,
-        },
-        {
-          $set: {
-            user: req.user._id,
-
-            provider: "Razorpay",
-
-            razorpayOrderId:
-              razorpay_order_id,
-
-            razorpayPaymentId:
-              razorpay_payment_id,
-
-            razorpaySignature:
-              razorpay_signature,
-
-            amount:
-              Number(order.totalAmount),
-
-            currency: "INR",
-
-            status: "captured",
-
-            paidAt: new Date(),
-          },
-        },
-        {
-          upsert: true,
-          new: true,
-          setDefaultsOnInsert: true,
-        }
-      );
-
       return res.status(200).json({
         success: true,
-        message:
-          "Payment already verified",
+        message: "Payment already verified",
+        alreadyPaid: true,
         order,
       });
     }
 
-    /*
-    ====================================================
-    VERIFY RAZORPAY SECRET
-    ====================================================
-    */
-
-    const secret =
-      process.env.RAZORPAY_KEY_SECRET;
-
-    if (!secret) {
-      console.error(
-        "RAZORPAY_KEY_SECRET is missing"
-      );
-
-      return res.status(500).json({
-        success: false,
+    if (
+      order.paymentMethod === "COD" &&
+      order.advancePaymentStatus === "Paid"
+    ) {
+      return res.status(200).json({
+        success: true,
         message:
-          "Payment configuration is incomplete",
+          "COD advance payment already verified",
+        alreadyPaid: true,
+        order,
       });
     }
 
-    /*
-    ====================================================
-    GENERATE SIGNATURE
-    ====================================================
-    */
+    /* =====================================================
+       VERIFY RAZORPAY ORDER ID
+    ===================================================== */
+
+    if (
+      order.razorpayOrderId !==
+      razorpay_order_id
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Razorpay order does not match FITFORGE order",
+      });
+    }
+
+    /* =====================================================
+       DETERMINE EXPECTED AMOUNT
+    ===================================================== */
+
+    let expectedAmount;
+
+    if (
+      order.paymentMethod === "COD"
+    ) {
+      expectedAmount =
+        roundMoney(
+          order.advanceAmount
+        );
+    } else {
+      expectedAmount =
+        roundMoney(
+          order.totalAmount
+        );
+    }
+
+    if (expectedAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid expected payment amount",
+      });
+    }
+
+    /* =====================================================
+       VERIFY SIGNATURE
+    ===================================================== */
 
     const generatedSignature =
       crypto
         .createHmac(
           "sha256",
-          secret
+          process.env.RAZORPAY_KEY_SECRET
         )
         .update(
           `${razorpay_order_id}|${razorpay_payment_id}`
@@ -540,86 +501,33 @@ export const verifyRazorpayPayment = async (
 
     const receivedBuffer =
       Buffer.from(
-        String(razorpay_signature),
+        razorpay_signature,
         "utf8"
       );
 
-    /*
-    --------------------------------------------
-    Prevent timingSafeEqual length error
-    --------------------------------------------
-    */
-
     if (
       generatedBuffer.length !==
-      receivedBuffer.length
+      receivedBuffer.length ||
+      !crypto.timingSafeEqual(
+        generatedBuffer,
+        receivedBuffer
+      )
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "Invalid payment signature",
+          "Invalid Razorpay payment signature",
       });
     }
 
-    /*
-    --------------------------------------------
-    Compare signatures securely
-    --------------------------------------------
-    */
+    /* =====================================================
+       FETCH PAYMENT FROM RAZORPAY
+    ===================================================== */
 
-    const signatureValid =
-      crypto.timingSafeEqual(
-        generatedBuffer,
-        receivedBuffer
+    const razorpayPayment =
+      await razorpay.payments.fetch(
+        razorpay_payment_id
       );
-
-    if (!signatureValid) {
-      console.error(
-        "❌ Invalid Razorpay signature"
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "Payment verification failed",
-      });
-    }
-
-    console.log(
-      "✅ Razorpay signature verified"
-    );
-
-    /*
-    ====================================================
-    FETCH PAYMENT FROM RAZORPAY
-    ====================================================
-    */
-
-    let razorpayPayment;
-
-    try {
-      razorpayPayment =
-        await razorpay.payments.fetch(
-          razorpay_payment_id
-        );
-    } catch (paymentError) {
-      console.error(
-        "Unable to fetch Razorpay payment:",
-        paymentError?.message
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "Unable to verify Razorpay payment",
-      });
-    }
-
-    /*
-    ====================================================
-    PAYMENT MUST BELONG TO RAZORPAY ORDER
-    ====================================================
-    */
 
     if (
       razorpayPayment.order_id !==
@@ -628,46 +536,9 @@ export const verifyRazorpayPayment = async (
       return res.status(400).json({
         success: false,
         message:
-          "Payment does not belong to this order",
+          "Razorpay payment order mismatch",
       });
     }
-
-    /*
-    ====================================================
-    VERIFY PAYMENT AMOUNT
-    ====================================================
-    */
-
-    const expectedAmount =
-      Math.round(
-        Number(order.totalAmount) *
-          100
-      );
-
-    const receivedAmount =
-      Number(
-        razorpayPayment.amount
-      );
-
-    if (
-      !Number.isFinite(
-        receivedAmount
-      ) ||
-      receivedAmount !==
-        expectedAmount
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Payment amount does not match order amount",
-      });
-    }
-
-    /*
-    ====================================================
-    VERIFY CURRENCY
-    ====================================================
-    */
 
     if (
       razorpayPayment.currency !==
@@ -676,15 +547,25 @@ export const verifyRazorpayPayment = async (
       return res.status(400).json({
         success: false,
         message:
-          "Invalid payment currency",
+          "Unsupported payment currency",
       });
     }
 
-    /*
-    ====================================================
-    PAYMENT MUST BE CAPTURED
-    ====================================================
-    */
+    const actualPaidAmount =
+      paiseToRupees(
+        razorpayPayment.amount
+      );
+
+    if (
+      roundMoney(actualPaidAmount) !==
+      roundMoney(expectedAmount)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Payment amount does not match order amount",
+      });
+    }
 
     if (
       razorpayPayment.status !==
@@ -693,349 +574,541 @@ export const verifyRazorpayPayment = async (
       return res.status(400).json({
         success: false,
         message:
-          `Payment is not captured. Current status: ${razorpayPayment.status}`,
+          "Payment has not been captured",
       });
     }
 
-    /*
-    ====================================================
-    CHECK STOCK AGAIN
-    ====================================================
-    */
+    /* =====================================================
+       TRANSACTION
+    ===================================================== */
 
-    for (const item of order.items) {
-      const product =
-        await Product.findById(
-          item.product
-        );
+    const session =
+      await mongoose.startSession();
 
-      if (!product) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "A product in this order no longer exists",
-        });
-      }
+    let transactionOrder;
 
-      if (!product.isActive) {
-        return res.status(400).json({
-          success: false,
-          message:
-            `${product.name} is no longer available`,
-        });
-      }
-
-      if (
-        Number(product.stock) <
-        Number(item.quantity)
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            `${product.name} is no longer available in the requested quantity`,
-        });
-      }
-    }
-
-    /*
-    ====================================================
-    REDUCE STOCK
-    ====================================================
-    */
-
-    for (const item of order.items) {
-      const product =
-        await Product.findById(
-          item.product
-        );
-
-      if (!product) {
-        continue;
-      }
-
-      product.stock =
-        Number(product.stock) -
-        Number(item.quantity);
-
-      await product.save();
-
-      console.log(
-        `Stock updated: ${product.name} → ${product.stock}`
-      );
-    }
-
-    /*
-    ====================================================
-    UPDATE ORDER
-    ====================================================
-    */
-
-    order.paymentStatus = "Paid";
-
-    order.paymentId =
-      razorpay_payment_id;
-
-    order.razorpayOrderId =
-      razorpay_order_id;
-
-    order.razorpayPaymentId =
-      razorpay_payment_id;
-
-    order.razorpaySignature =
-      razorpay_signature;
-
-    if (
-      !order.orderStatus ||
-      order.orderStatus === "Pending"
-    ) {
-      order.orderStatus =
-        "Confirmed";
-    }
-
-    await order.save();
-
-    /*
-    ====================================================
-    SAVE PAYMENT RECORD
-    ====================================================
-    */
-
-    const paymentAmount =
-      Number(order.totalAmount);
-
-    const paymentStatus =
-      razorpayPayment.status ===
-      "captured"
-        ? "captured"
-        : "authorized";
-
-    const payment = await Payment.findOneAndUpdate(
-      {
-        order: order._id,
-      },
-      {
-        $set: {
-          user: req.user._id,
-
-          provider: "Razorpay",
-
-          razorpayOrderId:
-            razorpay_order_id,
-
-          razorpayPaymentId:
-            razorpay_payment_id,
-
-          razorpaySignature:
-            razorpay_signature,
-
-          amount: paymentAmount,
-
-          currency:
-            razorpayPayment.currency ||
-            "INR",
-
-          status: paymentStatus,
-
-          method:
-            razorpayPayment.method ||
-            "",
-
-          paidAt:
-            paymentStatus === "captured"
-              ? new Date()
-              : null,
-
-          failureReason: "",
-        },
-      },
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-      }
-    );
-
-    /*
-    ====================================================
-    COUPON USAGE
-    ====================================================
-
-    Coupon usage increases ONLY after successful
-    Razorpay payment verification.
-    ====================================================
-    */
-
-    if (order.couponCode) {
-      const couponCode =
-        normalizeCouponCode(
-          order.couponCode
-        );
-
-      if (couponCode) {
-        const coupon =
-          await Coupon.findOne({
-            code: couponCode,
-          });
-
-        if (coupon) {
+    try {
+      await session.withTransaction(
+        async () => {
           /*
-          --------------------------------------------
-          Prevent usage from exceeding usageLimit
-          --------------------------------------------
+            Re-read order inside transaction.
+          */
+
+          transactionOrder =
+            await Order.findOne({
+              _id: order._id,
+              user: req.user._id,
+            }).session(session);
+
+          if (!transactionOrder) {
+            throw new Error(
+              "ORDER_NOT_FOUND"
+            );
+          }
+
+          /*
+            Protect against duplicate requests.
           */
 
           if (
-            coupon.usageLimit === null ||
-            coupon.usedCount <
-              coupon.usageLimit
+            transactionOrder.paymentMethod ===
+              "Razorpay" &&
+            transactionOrder.paymentStatus ===
+              "Paid"
           ) {
-            await Coupon.updateOne(
-              {
-                _id: coupon._id,
+            return;
+          }
 
-                $or: [
-                  {
-                    usageLimit: null,
+          if (
+            transactionOrder.paymentMethod ===
+              "COD" &&
+            transactionOrder.advancePaymentStatus ===
+              "Paid"
+          ) {
+            return;
+          }
+
+          /* ===============================================
+             FINAL STOCK CHECK + DEDUCTION
+          =============================================== */
+
+          for (
+            const item of
+              transactionOrder.items
+          ) {
+            const updatedProduct =
+              await Product.findOneAndUpdate(
+                {
+                  _id: item.product,
+
+                  isActive: true,
+
+                  stock: {
+                    $gte:
+                      Number(
+                        item.quantity
+                      ),
                   },
+                },
+                {
+                  $inc: {
+                    stock:
+                      -Number(
+                        item.quantity
+                      ),
+                  },
+                },
+                {
+                  new: true,
+                  session,
+                }
+              );
+
+            if (!updatedProduct) {
+              throw new Error(
+                "STOCK_UNAVAILABLE"
+              );
+            }
+          }
+
+          /* ===============================================
+             COUPON VALIDATION
+          =============================================== */
+
+          if (
+            transactionOrder.couponCode
+          ) {
+            const coupon =
+              await Coupon.findOne({
+                code:
+                  transactionOrder.couponCode,
+              }).session(session);
+
+            if (!coupon) {
+              throw new Error(
+                "COUPON_NOT_FOUND"
+              );
+            }
+
+            if (!coupon.isActive) {
+              throw new Error(
+                "COUPON_INACTIVE"
+              );
+            }
+
+            const now = new Date();
+
+            if (
+              coupon.startDate &&
+              now < coupon.startDate
+            ) {
+              throw new Error(
+                "COUPON_NOT_STARTED"
+              );
+            }
+
+            if (
+              coupon.endDate &&
+              now > coupon.endDate
+            ) {
+              throw new Error(
+                "COUPON_EXPIRED"
+              );
+            }
+
+            /* =============================================
+               GLOBAL COUPON LIMIT
+            ============================================= */
+
+            if (
+              coupon.usageLimit !==
+                null &&
+              coupon.usedCount >=
+                coupon.usageLimit
+            ) {
+              throw new Error(
+                "COUPON_USAGE_LIMIT"
+              );
+            }
+
+            /* =============================================
+               PER USER LIMIT
+            ============================================= */
+
+            if (
+              coupon.perUserLimit !==
+                null &&
+              coupon.perUserLimit !==
+                undefined
+            ) {
+              const previousUses =
+                await Order.countDocuments(
                   {
-                    $expr: {
-                      $lt: [
-                        "$usedCount",
-                        "$usageLimit",
+                    user:
+                      req.user._id,
+
+                    couponCode:
+                      coupon.code,
+
+                    _id: {
+                      $ne:
+                        transactionOrder._id,
+                    },
+
+                    $or: [
+                      {
+                        paymentStatus:
+                          "Paid",
+                      },
+
+                      {
+                        paymentMethod:
+                          "COD",
+
+                        advancePaymentStatus:
+                          "Paid",
+
+                        orderStatus: {
+                          $nin: [
+                            "Cancelled",
+                            "Refunded",
+                          ],
+                        },
+                      },
+                    ],
+
+                    orderStatus: {
+                      $nin: [
+                        "Cancelled",
+                        "Refunded",
                       ],
                     },
-                  },
-                ],
-              },
-              {
-                $inc: {
-                  usedCount: 1,
-                },
+                  }
+                ).session(session);
+
+              if (
+                previousUses >=
+                Number(
+                  coupon.perUserLimit
+                )
+              ) {
+                throw new Error(
+                  "COUPON_USER_LIMIT"
+                );
               }
-            );
+            }
+
+            /* =============================================
+               INCREMENT COUPON USAGE
+            ============================================= */
+
+            const couponUpdate =
+              await Coupon.findOneAndUpdate(
+                {
+                  _id: coupon._id,
+
+                  $or: [
+                    {
+                      usageLimit: null,
+                    },
+
+                    {
+                      usageLimit: {
+                        $gt:
+                          coupon.usedCount,
+                      },
+                    },
+                  ],
+                },
+                {
+                  $inc: {
+                    usedCount: 1,
+                  },
+                },
+                {
+                  new: true,
+                  session,
+                }
+              );
+
+            if (!couponUpdate) {
+              throw new Error(
+                "COUPON_USAGE_LIMIT"
+              );
+            }
           }
+
+          /* ===============================================
+             UPDATE ORDER
+          =============================================== */
+
+          if (
+            transactionOrder.paymentMethod ===
+            "COD"
+          ) {
+            transactionOrder.advancePaymentStatus =
+              "Paid";
+
+            transactionOrder.paymentStatus =
+              "Pending";
+
+            transactionOrder.orderStatus =
+              "Confirmed";
+
+            transactionOrder.razorpayPaymentId =
+              razorpay_payment_id;
+
+            transactionOrder.razorpaySignature =
+              razorpay_signature;
+
+            transactionOrder.paymentId =
+              razorpay_payment_id;
+          } else {
+            transactionOrder.paymentStatus =
+              "Paid";
+
+            transactionOrder.orderStatus =
+              "Confirmed";
+
+            transactionOrder.razorpayPaymentId =
+              razorpay_payment_id;
+
+            transactionOrder.razorpaySignature =
+              razorpay_signature;
+
+            transactionOrder.paymentId =
+              razorpay_payment_id;
+
+            transactionOrder.advanceAmount =
+              transactionOrder.totalAmount;
+
+            transactionOrder.remainingAmount =
+              0;
+          }
+
+          await transactionOrder.save({
+            session,
+          });
+
+          /* ===============================================
+             PAYMENT RECORD
+          =============================================== */
+
+          await Payment.findOneAndUpdate(
+            {
+              order:
+                transactionOrder._id,
+            },
+            {
+              $set: {
+                user:
+                  req.user._id,
+
+                order:
+                  transactionOrder._id,
+
+                amount:
+                  expectedAmount,
+
+                currency: "INR",
+
+                status:
+                  "captured",
+
+                razorpayOrderId:
+                  razorpay_order_id,
+
+                razorpayPaymentId:
+                  razorpay_payment_id,
+
+                paymentMethod:
+                  transactionOrder.paymentMethod,
+
+                paymentType:
+                  transactionOrder.paymentMethod ===
+                  "COD"
+                    ? "COD_ADVANCE"
+                    : "FULL_PAYMENT",
+              },
+            },
+            {
+              upsert: true,
+              new: true,
+              session,
+
+              setDefaultsOnInsert:
+                true,
+            }
+          );
         }
-      }
+      );
+    } finally {
+      await session.endSession();
     }
 
-    /*
-    ====================================================
-    SUCCESS LOGS
-    ====================================================
-    */
-
-    console.log(
-      "✅ Payment verified successfully"
-    );
-
-    console.log(
-      "Order:",
-      order.orderNumber
-    );
-
-    console.log(
-      "Payment:",
-      razorpay_payment_id
-    );
-
-    console.log(
-      "Payment MongoDB ID:",
-      payment._id.toString()
-    );
-
-    console.log(
-      "Amount:",
-      payment.amount
-    );
-
-    console.log(
-      "Method:",
-      payment.method
-    );
-
-    console.log(
-      "============================================\n"
-    );
-
-    /*
-    ====================================================
-    RESPONSE
-    ====================================================
-    */
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
 
     return res.status(200).json({
       success: true,
 
       message:
-        "Payment verified successfully",
+        order.paymentMethod === "COD"
+          ? "COD advance payment verified successfully"
+          : "Payment verified successfully",
 
-      order,
+      order: transactionOrder,
 
       payment: {
-        _id: payment._id,
+        amount: expectedAmount,
+
+        paymentType:
+          order.paymentMethod === "COD"
+            ? "COD_ADVANCE"
+            : "FULL_PAYMENT",
 
         razorpayOrderId:
-          payment.razorpayOrderId,
+          razorpay_order_id,
 
         razorpayPaymentId:
-          payment.razorpayPaymentId,
+          razorpay_payment_id,
 
-        amount:
-          payment.amount,
-
-        currency:
-          payment.currency,
-
-        status:
-          payment.status,
-
-        method:
-          payment.method,
-
-        paidAt:
-          payment.paidAt,
+        status: "captured",
       },
     });
   } catch (error) {
     console.error(
-      "\n========== PAYMENT VERIFY ERROR =========="
+      "Verify Razorpay payment error:",
+      error
     );
 
-    console.error(
-      "Name:",
-      error?.name
-    );
+    /* =====================================================
+       ERROR MESSAGES
+    ===================================================== */
 
-    console.error(
-      "Message:",
-      error?.message
-    );
+    const errorMessages = {
+      ORDER_NOT_FOUND:
+        "Order no longer exists",
 
-    console.error(
-      "Stack:",
-      error?.stack
-    );
+      STOCK_UNAVAILABLE:
+        "One or more products are no longer available in the requested quantity",
 
-    console.error(
-      "============================================\n"
-    );
+      COUPON_NOT_FOUND:
+        "The coupon used for this order is no longer available",
+
+      COUPON_INACTIVE:
+        "The coupon used for this order is inactive",
+
+      COUPON_NOT_STARTED:
+        "The coupon used for this order is not active yet",
+
+      COUPON_EXPIRED:
+        "The coupon used for this order has expired",
+
+      COUPON_USAGE_LIMIT:
+        "The coupon usage limit has been reached",
+
+      COUPON_USER_LIMIT:
+        "You have reached the usage limit for this coupon",
+    };
+
+    const knownMessage =
+      errorMessages[error.message];
+
+    if (knownMessage) {
+      /*
+        Important:
+        Razorpay has already captured the money,
+        but the order transaction failed.
+
+        We must attempt a refund.
+      */
+
+      try {
+        await razorpay.payments.refund(
+          razorpay_payment_id,
+          {
+            amount:
+              rupeesToPaise(
+                order.paymentMethod ===
+                  "COD"
+                  ? order.advanceAmount
+                  : order.totalAmount
+              ),
+
+            speed: "normal",
+
+            notes: {
+              fitforgeOrderId:
+                order._id.toString(),
+
+              reason:
+                knownMessage,
+            },
+          }
+        );
+
+        await Payment.findOneAndUpdate(
+          {
+            order: order._id,
+          },
+          {
+            $set: {
+              status: "refunded",
+
+              razorpayOrderId:
+                razorpay_order_id,
+
+              razorpayPaymentId:
+                razorpay_payment_id,
+            },
+          },
+          {
+            upsert: true,
+          }
+        );
+
+        return res.status(409).json({
+          success: false,
+
+          message:
+            `${knownMessage}. Your payment has been refunded.`,
+
+          paymentReceived: true,
+
+          refundInitiated: true,
+        });
+      } catch (refundError) {
+        console.error(
+          "Automatic Razorpay refund failed:",
+          refundError
+        );
+
+        return res.status(500).json({
+          success: false,
+
+          message:
+            `${knownMessage}. Payment was received, but the automatic refund could not be completed. Please contact FITFORGE support.`,
+
+          paymentReceived: true,
+
+          refundInitiated: false,
+        });
+      }
+    }
 
     return res.status(500).json({
       success: false,
-
       message:
-        error?.message ||
         "Payment verification failed",
     });
   }
 };
 
-/*
-====================================================
-GET PAYMENT STATUS
-GET /api/payments/status/:orderId
-====================================================
-*/
+/* =========================================================
+   GET PAYMENT STATUS
+========================================================= */
 
 export const getPaymentStatus = async (
   req,
@@ -1044,46 +1117,18 @@ export const getPaymentStatus = async (
   try {
     const { orderId } = req.params;
 
-    /*
-    --------------------------------------------
-    Validate order ID
-    --------------------------------------------
-    */
-
-    if (
-      !mongoose.Types.ObjectId.isValid(
-        orderId
-      )
-    ) {
+    if (!isValidObjectId(orderId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid order ID",
       });
     }
 
-    /*
-    --------------------------------------------
-    Find customer's order
-    --------------------------------------------
-    */
-
     const order =
       await Order.findOne({
         _id: orderId,
         user: req.user._id,
-      }).select(
-        [
-          "orderNumber",
-          "totalAmount",
-          "paymentMethod",
-          "paymentStatus",
-          "paymentId",
-          "razorpayOrderId",
-          "razorpayPaymentId",
-          "razorpaySignature",
-          "orderStatus",
-        ].join(" ")
-      );
+      });
 
     if (!order) {
       return res.status(404).json({
@@ -1092,55 +1137,40 @@ export const getPaymentStatus = async (
       });
     }
 
-    /*
-    --------------------------------------------
-    Get Payment document
-    --------------------------------------------
-    */
-
     const payment =
       await Payment.findOne({
         order: order._id,
-      }).select(
-        [
-          "provider",
-          "razorpayOrderId",
-          "razorpayPaymentId",
-          "amount",
-          "currency",
-          "status",
-          "method",
-          "paidAt",
-          "createdAt",
-          "updatedAt",
-        ].join(" ")
-      );
-
-    /*
-    --------------------------------------------
-    Response
-    --------------------------------------------
-    */
+      });
 
     return res.status(200).json({
       success: true,
 
-      paymentStatus:
-        order.paymentStatus,
+      order: {
+        _id: order._id,
+        orderNumber:
+          order.orderNumber,
 
-      paymentId:
-        order.paymentId,
+        totalAmount:
+          order.totalAmount,
 
-      razorpayOrderId:
-        order.razorpayOrderId,
+        advanceAmount:
+          order.advanceAmount,
 
-      razorpayPaymentId:
-        order.razorpayPaymentId,
+        remainingAmount:
+          order.remainingAmount,
 
-      orderStatus:
-        order.orderStatus,
+        paymentMethod:
+          order.paymentMethod,
 
-      order,
+        paymentStatus:
+          order.paymentStatus,
+
+        advancePaymentStatus:
+          order.advancePaymentStatus,
+
+        orderStatus:
+          order.orderStatus,
+      },
 
       payment,
     });
@@ -1152,7 +1182,6 @@ export const getPaymentStatus = async (
 
     return res.status(500).json({
       success: false,
-
       message:
         "Failed to get payment status",
     });

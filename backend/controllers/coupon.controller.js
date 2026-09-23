@@ -1,19 +1,87 @@
+import mongoose from "mongoose";
+
 import Coupon from "../models/Coupon.js";
+import Order from "../models/Order.js";
+
+const roundMoney = (value) =>
+  Number(Number(value || 0).toFixed(2));
+
+const isValidObjectId = (id) =>
+  mongoose.Types.ObjectId.isValid(id);
+
+/*
+|--------------------------------------------------------------------------
+| VALIDATE COUPON
+|--------------------------------------------------------------------------
+| POST /api/coupons/validate
+|
+| Body:
+| {
+|   code: "SAVE20",
+|   subtotal: 2500,
+|   collection: "Performance"
+| }
+|--------------------------------------------------------------------------
+*/
 
 export const validateCoupon = async (req, res) => {
   try {
-    const { code, subtotal, collection = "All" } = req.body;
+    const userId = req.user?._id;
 
-    if (!code) {
+    if (!userId || !isValidObjectId(userId)) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const {
+      code,
+      subtotal,
+      collection,
+    } = req.body;
+
+    /*
+    |--------------------------------------------------------------------------
+    | BASIC VALIDATION
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      typeof code !== "string" ||
+      !code.trim()
+    ) {
       return res.status(400).json({
         success: false,
         message: "Coupon code is required",
       });
     }
 
-    const coupon = await Coupon.findOne({
-      code: code.trim().toUpperCase(),
-    });
+    const orderSubtotal = Number(subtotal);
+
+    if (
+      !Number.isFinite(orderSubtotal) ||
+      orderSubtotal < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid subtotal",
+      });
+    }
+
+    const normalizedCode =
+      code.trim().toUpperCase();
+
+    /*
+    |--------------------------------------------------------------------------
+    | FIND COUPON
+    |--------------------------------------------------------------------------
+    */
+
+    const coupon =
+      await Coupon.findOne({
+        code: normalizedCode,
+      }).lean();
 
     if (!coupon) {
       return res.status(404).json({
@@ -22,100 +90,327 @@ export const validateCoupon = async (req, res) => {
       });
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | ACTIVE CHECK
+    |--------------------------------------------------------------------------
+    */
+
     if (!coupon.isActive) {
       return res.status(400).json({
         success: false,
-        message: "Coupon is inactive",
+        message: "This coupon is inactive",
       });
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DATE CHECK
+    |--------------------------------------------------------------------------
+    */
 
     const now = new Date();
 
-    if (coupon.startDate && now < coupon.startDate) {
+    if (
+      coupon.startDate &&
+      now < new Date(coupon.startDate)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Coupon is not active yet",
+        message: "This coupon is not active yet",
       });
     }
 
-    if (coupon.endDate && now > coupon.endDate) {
+    if (
+      coupon.endDate &&
+      now > new Date(coupon.endDate)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Coupon has expired",
+        message: "This coupon has expired",
       });
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | GLOBAL USAGE LIMIT
+    |--------------------------------------------------------------------------
+    */
 
     if (
       coupon.usageLimit !== null &&
-      coupon.usedCount >= coupon.usageLimit
+      coupon.usageLimit !== undefined &&
+      Number(coupon.usedCount || 0) >=
+        Number(coupon.usageLimit)
     ) {
       return res.status(400).json({
         success: false,
-        message: "Coupon usage limit reached",
+        message:
+          "This coupon usage limit has been reached",
       });
     }
 
-    const orderSubtotal = Number(subtotal);
+    /*
+    |--------------------------------------------------------------------------
+    | MINIMUM ORDER
+    |--------------------------------------------------------------------------
+    */
 
-    if (!Number.isFinite(orderSubtotal) || orderSubtotal <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid subtotal",
-      });
-    }
-
-    if (orderSubtotal < coupon.minimumOrderAmount) {
-      return res.status(400).json({
-        success: false,
-        message: `Minimum order amount is ₹${coupon.minimumOrderAmount}`,
-      });
-    }
+    const minimumOrderAmount =
+      Number(
+        coupon.minimumOrderAmount || 0
+      );
 
     if (
-      coupon.collection !== "All" &&
-      coupon.collection !== collection
+      orderSubtotal <
+      minimumOrderAmount
     ) {
       return res.status(400).json({
         success: false,
-        message: `Coupon is valid only for ${coupon.collection} products`,
+        message: `Minimum order amount for this coupon is ₹${minimumOrderAmount}`,
       });
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | COLLECTION RESTRICTION
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      coupon.collection &&
+      coupon.collection !== "All"
+    ) {
+      if (
+        !collection ||
+        String(collection).toLowerCase() !==
+          String(coupon.collection).toLowerCase()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `This coupon is valid only for ${coupon.collection} products`,
+        });
+      }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PER USER LIMIT
+    |--------------------------------------------------------------------------
+    |
+    | We count only valid/used orders.
+    |
+    | Razorpay:
+    | paymentStatus = Paid
+    |
+    | COD:
+    | advance payment must be Paid
+    | OR COD does not require advance.
+    |
+    | Cancelled and Refunded orders do not count.
+    |--------------------------------------------------------------------------
+    */
+
+    const perUserLimit =
+      Number(coupon.perUserLimit || 1);
+
+    if (perUserLimit > 0) {
+      const previousUses =
+        await Order.countDocuments({
+          user: userId,
+
+          couponCode: coupon.code,
+
+          orderStatus: {
+            $nin: [
+              "Cancelled",
+              "Refunded",
+            ],
+          },
+
+          $or: [
+            {
+              paymentStatus: "Paid",
+            },
+            {
+              paymentMethod: "COD",
+
+              $or: [
+                {
+                  advancePaymentStatus:
+                    "Paid",
+                },
+                {
+                  advancePaymentStatus:
+                    "NotRequired",
+                },
+              ],
+            },
+          ],
+        });
+
+      if (
+        previousUses >=
+        perUserLimit
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "You have already used this coupon the maximum number of times",
+        });
+      }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | CALCULATE DISCOUNT
+    |--------------------------------------------------------------------------
+    */
 
     let discount = 0;
 
-    if (coupon.discountType === "Percentage") {
-      discount = (orderSubtotal * coupon.discountValue) / 100;
+    if (
+      coupon.discountType ===
+      "Percentage"
+    ) {
+      const percentage =
+        Number(
+          coupon.discountValue || 0
+        );
 
-      if (coupon.maximumDiscount !== null) {
-        discount = Math.min(discount, coupon.maximumDiscount);
+      if (
+        percentage <= 0 ||
+        percentage > 100
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "This coupon has an invalid discount",
+        });
       }
+
+      discount = roundMoney(
+        (orderSubtotal *
+          percentage) /
+          100
+      );
+
+      /*
+      |--------------------------------------------------------------------------
+      | MAXIMUM DISCOUNT
+      |--------------------------------------------------------------------------
+      */
+
+      if (
+        coupon.maximumDiscount !== null &&
+        coupon.maximumDiscount !== undefined
+      ) {
+        discount = Math.min(
+          discount,
+          Number(
+            coupon.maximumDiscount
+          )
+        );
+      }
+    } else if (
+      coupon.discountType ===
+      "Fixed"
+    ) {
+      const fixedDiscount =
+        Number(
+          coupon.discountValue || 0
+        );
+
+      if (fixedDiscount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "This coupon has an invalid discount",
+        });
+      }
+
+      discount = Math.min(
+        fixedDiscount,
+        orderSubtotal
+      );
     } else {
-      discount = coupon.discountValue;
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid coupon discount type",
+      });
     }
 
-    discount = Math.min(discount, orderSubtotal);
+    discount = roundMoney(
+      Math.max(
+        0,
+        Math.min(
+          discount,
+          orderSubtotal
+        )
+      )
+    );
 
-    const finalSubtotal = orderSubtotal - discount;
+    /*
+    |--------------------------------------------------------------------------
+    | FINAL SUBTOTAL
+    |--------------------------------------------------------------------------
+    */
 
-    return res.status(200).json({
+    const finalSubtotal =
+      roundMoney(
+        Math.max(
+          0,
+          orderSubtotal - discount
+        )
+      );
+
+    /*
+    |--------------------------------------------------------------------------
+    | RESPONSE
+    |--------------------------------------------------------------------------
+    */
+
+    return res.json({
       success: true,
-      message: "Coupon applied successfully",
+
+      message:
+        "Coupon applied successfully",
+
       coupon: {
-        _id: coupon._id,
+        id: coupon._id,
         code: coupon.code,
-        discountType: coupon.discountType,
-        discountValue: coupon.discountValue,
+        description:
+          coupon.description || "",
+        discountType:
+          coupon.discountType,
+        discountValue:
+          coupon.discountValue,
+        maximumDiscount:
+          coupon.maximumDiscount,
+        collection:
+          coupon.collection || "All",
       },
-      subtotal: orderSubtotal,
+
       discount,
+
+      subtotal: roundMoney(
+        orderSubtotal
+      ),
+
       finalSubtotal,
     });
   } catch (error) {
-    console.error("Validate coupon error:", error);
+    console.error(
+      "Validate coupon error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to validate coupon",
+      message:
+        "Failed to validate coupon",
     });
   }
 };
+

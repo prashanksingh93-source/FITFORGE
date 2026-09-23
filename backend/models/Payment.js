@@ -2,12 +2,11 @@ import mongoose from "mongoose";
 
 const paymentSchema = new mongoose.Schema(
   {
-    order: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Order",
-      required: true,
-      index: true,
-    },
+    /*
+    |--------------------------------------------------------------------------
+    | USER
+    |--------------------------------------------------------------------------
+    */
 
     user: {
       type: mongoose.Schema.Types.ObjectId,
@@ -16,28 +15,24 @@ const paymentSchema = new mongoose.Schema(
       index: true,
     },
 
-    provider: {
-      type: String,
-      enum: ["Razorpay"],
-      default: "Razorpay",
-    },
+    /*
+    |--------------------------------------------------------------------------
+    | ORDER
+    |--------------------------------------------------------------------------
+    */
 
-    razorpayOrderId: {
-      type: String,
+    order: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
       required: true,
       index: true,
     },
 
-    razorpayPaymentId: {
-      type: String,
-      default: "",
-      index: true,
-    },
-
-    razorpaySignature: {
-      type: String,
-      default: "",
-    },
+    /*
+    |--------------------------------------------------------------------------
+    | AMOUNT
+    |--------------------------------------------------------------------------
+    */
 
     amount: {
       type: Number,
@@ -45,12 +40,57 @@ const paymentSchema = new mongoose.Schema(
       min: 0,
     },
 
+    /*
+    |--------------------------------------------------------------------------
+    | CURRENCY
+    |--------------------------------------------------------------------------
+    */
+
     currency: {
       type: String,
       default: "INR",
       uppercase: true,
       trim: true,
     },
+
+    /*
+    |--------------------------------------------------------------------------
+    | PAYMENT METHOD
+    |--------------------------------------------------------------------------
+    */
+
+    paymentMethod: {
+      type: String,
+      enum: ["Razorpay", "COD"],
+      default: "Razorpay",
+    },
+
+    /*
+    |--------------------------------------------------------------------------
+    | PAYMENT TYPE
+    |--------------------------------------------------------------------------
+    |
+    | FULL_PAYMENT
+    | COD_ADVANCE
+    | COD_REMAINING
+    |
+    */
+
+    paymentType: {
+      type: String,
+      enum: [
+        "FULL_PAYMENT",
+        "COD_ADVANCE",
+        "COD_REMAINING",
+      ],
+      default: "FULL_PAYMENT",
+    },
+
+    /*
+    |--------------------------------------------------------------------------
+    | PAYMENT STATUS
+    |--------------------------------------------------------------------------
+    */
 
     status: {
       type: String,
@@ -60,25 +100,90 @@ const paymentSchema = new mongoose.Schema(
         "captured",
         "failed",
         "refunded",
+        "partially_refunded",
       ],
       default: "created",
       index: true,
     },
 
-    method: {
+    /*
+    |--------------------------------------------------------------------------
+    | RAZORPAY ORDER ID
+    |--------------------------------------------------------------------------
+    |
+    | Index is defined below using paymentSchema.index()
+    | to avoid duplicate index warnings.
+    |
+    */
+
+    razorpayOrderId: {
       type: String,
       default: "",
+      trim: true,
     },
+
+    /*
+    |--------------------------------------------------------------------------
+    | RAZORPAY PAYMENT ID
+    |--------------------------------------------------------------------------
+    |
+    | Index is defined below using paymentSchema.index()
+    | to avoid duplicate index warnings.
+    |
+    */
+
+    razorpayPaymentId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    /*
+    |--------------------------------------------------------------------------
+    | RAZORPAY SIGNATURE
+    |--------------------------------------------------------------------------
+    */
+
+    razorpaySignature: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    /*
+    |--------------------------------------------------------------------------
+    | FAILURE REASON
+    |--------------------------------------------------------------------------
+    */
 
     failureReason: {
       type: String,
       default: "",
+      trim: true,
     },
 
-    paidAt: {
+    /*
+    |--------------------------------------------------------------------------
+    | REFUND
+    |--------------------------------------------------------------------------
+    */
+
+    refundAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    refundedAt: {
       type: Date,
       default: null,
     },
+
+    /*
+    |--------------------------------------------------------------------------
+    | METADATA
+    |--------------------------------------------------------------------------
+    */
 
     metadata: {
       type: mongoose.Schema.Types.Mixed,
@@ -89,6 +194,35 @@ const paymentSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+/*
+|--------------------------------------------------------------------------
+| INDEXES
+|--------------------------------------------------------------------------
+|
+| These are intentionally defined here instead of also using
+| index: true on razorpayOrderId / razorpayPaymentId.
+|
+*/
+
+paymentSchema.index({
+  order: 1,
+  createdAt: -1,
+});
+
+paymentSchema.index({
+  razorpayOrderId: 1,
+});
+
+paymentSchema.index({
+  razorpayPaymentId: 1,
+});
+
+/*
+|--------------------------------------------------------------------------
+| MODEL
+|--------------------------------------------------------------------------
+*/
 
 const Payment =
   mongoose.models.Payment ||

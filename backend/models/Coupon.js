@@ -46,6 +46,14 @@ const couponSchema = new mongoose.Schema(
       min: 1,
     },
 
+    // Maximum number of times one customer can use this coupon.
+    perUserLimit: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+
+    // Total successful uses of this coupon.
     usedCount: {
       type: Number,
       default: 0,
@@ -83,3 +91,4 @@ const Coupon =
   mongoose.model("Coupon", couponSchema);
 
 export default Coupon;
+

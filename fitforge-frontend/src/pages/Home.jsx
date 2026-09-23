@@ -20,6 +20,17 @@ const Home = () => {
   const [homepage, setHomepage] = useState(null);
   const [homepageLoading, setHomepageLoading] = useState(true);
 
+  // =========================================================
+  // PROMOTIONS
+  // =========================================================
+
+  const [promotions, setPromotions] = useState([]);
+  const [promotionsLoading, setPromotionsLoading] = useState(true);
+
+  // =========================================================
+  // FETCH HOMEPAGE SETTINGS
+  // =========================================================
+
   useEffect(() => {
     const fetchHomepage = async () => {
       try {
@@ -36,23 +47,154 @@ const Home = () => {
     fetchHomepage();
   }, []);
 
+  // =========================================================
+  // FETCH PROMOTIONS
+  // =========================================================
+
+  useEffect(() => {
+    const fetchPromotions = async () => {
+      try {
+        const response = await api.get("/promotions");
+
+        /*
+          Support common API response formats:
+
+          {
+            promotions: [...]
+          }
+
+          or
+
+          {
+            data: [...]
+          }
+
+          or directly:
+          [...]
+        */
+
+        const data = response.data;
+
+        const promotionList = Array.isArray(data)
+          ? data
+          : data?.promotions ||
+            data?.data ||
+            [];
+
+        setPromotions(promotionList);
+      } catch (error) {
+        console.error(
+          "Promotions fetch error:",
+          error.response?.data || error
+        );
+
+        setPromotions([]);
+      } finally {
+        setPromotionsLoading(false);
+      }
+    };
+
+    fetchPromotions();
+  }, []);
+
+  // =========================================================
+  // HOMEPAGE FALLBACK SETTINGS
+  // =========================================================
+
   const settings = homepage || {
     heroTitle: "THE MOST ICONIC GYM WEAR",
-    heroSubtitle: "BUILT FOR PERFORMANCE. DESIGNED FOR THE ICONIC.",
+
+    heroSubtitle:
+      "BUILT FOR PERFORMANCE. DESIGNED FOR THE ICONIC.",
+
     heroDescription:
       "Premium gym wear engineered for movement, performance and everyday confidence.",
+
     heroImage: "",
-    heroButtonText: "SHOP THE SIGNATURE COLLECTION",
+
+    heroButtonText:
+      "SHOP THE SIGNATURE COLLECTION",
+
     heroButtonLink: "/shop",
+
     announcementEnabled: true,
-    announcementText: "THE MOST ICONIC GYM WEAR",
-    performanceTitle: "PERFORMANCE",
-    performanceSubtitle: "ENGINEERED TO PERFORM",
-    luxuryTitle: "LUXURY",
-    luxurySubtitle: "ELEVATED TRAINING",
-    featuredTitle: "ICONIC ESSENTIALS",
-    featuredSubtitle: "THE PIECES THAT DEFINE FITFORGE",
+
+    announcementText:
+      "THE MOST ICONIC GYM WEAR",
+
+    performanceTitle:
+      "PERFORMANCE",
+
+    performanceSubtitle:
+      "ENGINEERED TO PERFORM",
+
+    luxuryTitle:
+      "LUXURY",
+
+    luxurySubtitle:
+      "ELEVATED TRAINING",
+
+    featuredTitle:
+      "ICONIC ESSENTIALS",
+
+    featuredSubtitle:
+      "THE PIECES THAT DEFINE FITFORGE",
   };
+
+  // =========================================================
+  // ACTIVE PROMOTIONS
+  // =========================================================
+
+  const activePromotions = useMemo(() => {
+    const now = new Date();
+
+    return promotions
+      .filter((promotion) => {
+        // Must be active
+        if (promotion.isActive !== true) {
+          return false;
+        }
+
+        // Start date
+        if (promotion.startDate) {
+          const startDate = new Date(
+            promotion.startDate
+          );
+
+          if (
+            !Number.isNaN(startDate.getTime()) &&
+            now < startDate
+          ) {
+            return false;
+          }
+        }
+
+        // End date
+        if (promotion.endDate) {
+          const endDate = new Date(
+            promotion.endDate
+          );
+
+          if (
+            !Number.isNaN(endDate.getTime()) &&
+            now > endDate
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+      .sort(
+        (a, b) =>
+          (a.displayOrder ?? 0) -
+          (b.displayOrder ?? 0)
+      );
+  }, [promotions]);
+
+  // =========================================================
+  // ICONIC PRODUCTS
+  // =========================================================
 
   const iconicProducts = useMemo(() => {
     return products
@@ -61,6 +203,10 @@ const Home = () => {
       )
       .slice(0, 4);
   }, [products]);
+
+  // =========================================================
+  // PERFORMANCE PRODUCTS
+  // =========================================================
 
   const performanceProducts = useMemo(() => {
     return products
@@ -71,6 +217,10 @@ const Home = () => {
       .slice(0, 4);
   }, [products]);
 
+  // =========================================================
+  // LUXURY PRODUCTS
+  // =========================================================
+
   const luxuryProducts = useMemo(() => {
     return products
       .filter(
@@ -80,6 +230,10 @@ const Home = () => {
       .slice(0, 4);
   }, [products]);
 
+  // =========================================================
+  // LOADING
+  // =========================================================
+
   if (homepageLoading && productsLoading) {
     return (
       <div className="min-h-screen bg-white">
@@ -87,6 +241,7 @@ const Home = () => {
 
         <div className="mx-auto max-w-7xl space-y-6 px-5 py-16">
           <div className="h-10 w-72 rounded bg-neutral-200" />
+
           <div className="grid gap-5 md:grid-cols-4">
             {[1, 2, 3, 4].map((item) => (
               <div
@@ -113,12 +268,12 @@ const Home = () => {
         </div>
       )}
 
-
       {/* =====================================================
           HERO
       ====================================================== */}
 
       <section className="relative min-h-[72vh] overflow-hidden bg-black text-white">
+
         {settings.heroImage && (
           <img
             src={settings.heroImage}
@@ -130,6 +285,7 @@ const Home = () => {
         <div className="absolute inset-0 bg-gradient-to-r from-black via-black/75 to-black/20" />
 
         <div className="relative mx-auto flex min-h-[72vh] max-w-7xl items-center px-5 py-20 md:px-8">
+
           <motion.div
             initial={{
               opacity: 0,
@@ -144,53 +300,87 @@ const Home = () => {
             }}
             className="max-w-3xl"
           >
+
             <div className="mb-7 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.3em] text-neutral-400">
+
               <Sparkles size={15} />
+
               FITFORGE
+
             </div>
 
             <h1 className="text-5xl font-black leading-[0.9] tracking-[-0.04em] md:text-7xl lg:text-8xl">
+
               {settings.heroTitle}
+
             </h1>
 
             <p className="mt-7 max-w-xl text-sm font-semibold uppercase leading-6 tracking-[0.18em] text-neutral-300 md:text-base">
+
               {settings.heroSubtitle}
+
             </p>
 
             <p className="mt-5 max-w-xl text-sm leading-7 text-neutral-400">
+
               {settings.heroDescription}
+
             </p>
 
             <div className="mt-9 flex flex-wrap gap-3">
+
               <Link
-                to={settings.heroButtonLink || "/shop"}
+                to={
+                  settings.heroButtonLink ||
+                  "/shop"
+                }
                 className="group inline-flex items-center gap-3 bg-gray-300 px-7 py-4 text-sm font-black text-black transition hover:bg-neutral-200"
               >
-                {settings.heroButtonText || "SHOP NOW"}
+
+                {settings.heroButtonText ||
+                  "SHOP NOW"}
 
                 <ArrowRight
                   size={17}
                   className="transition-transform group-hover:translate-x-1"
                 />
+
               </Link>
 
               <Link
                 to="/luxury"
                 className="inline-flex items-center gap-3 border border-white/30 px-7 py-4 text-sm font-bold text-white transition hover:border-white"
               >
+
                 EXPLORE LUXURY
+
               </Link>
+
             </div>
+
           </motion.div>
+
         </div>
+
       </section>
 
+      {/* =====================================================
+          DYNAMIC PROMOTION BANNER
+      ====================================================== */}
+
+      {!promotionsLoading &&
+        activePromotions.length > 0 && (
+          <PromotionBanner
+            promotions={activePromotions}
+          />
+        )}
 
       {/* =====================================================
           FEATURES
       ====================================================== */}
 
       <section className="border-b border-neutral-200">
+
         <div className="mx-auto grid max-w-7xl md:grid-cols-4">
 
           <Feature
@@ -218,8 +408,8 @@ const Home = () => {
           />
 
         </div>
-      </section>
 
+      </section>
 
       {/* =====================================================
           ICONIC PRODUCTS
@@ -234,7 +424,6 @@ const Home = () => {
         />
       )}
 
-
       {/* =====================================================
           PERFORMANCE
       ====================================================== */}
@@ -247,7 +436,6 @@ const Home = () => {
           products={performanceProducts}
         />
       )}
-
 
       {/* =====================================================
           LUXURY
@@ -263,41 +451,270 @@ const Home = () => {
         />
       )}
 
-
       {/* =====================================================
           FINAL CTA
       ====================================================== */}
 
       <section className="bg-black px-5 py-24 text-center text-white md:py-32">
+
         <div className="mx-auto max-w-3xl">
+
           <p className="text-xs font-bold uppercase tracking-[0.3em] text-neutral-500">
+
             TRAIN. MOVE. DEFINE.
+
           </p>
 
           <h2 className="mt-5 text-4xl font-black tracking-tight md:text-6xl">
+
             WEAR THE DIFFERENCE.
+
           </h2>
 
           <p className="mx-auto mt-6 max-w-xl text-sm leading-7 text-neutral-400">
+
             Discover premium performance and luxury gym wear
             designed for people who take their training seriously.
+
           </p>
 
           <Link
             to="/shop"
             className="mt-9 inline-flex items-center gap-3 bg-gray-700 px-8 py-4 text-sm font-black text-black transition hover:bg-neutral-200"
           >
+
             SHOP ALL
 
             <ChevronRight size={18} />
+
           </Link>
+
         </div>
+
       </section>
 
     </div>
   );
 };
 
+
+// ===========================================================
+// PROMOTION BANNER
+// ===========================================================
+
+const PromotionBanner = ({
+  promotions,
+}) => {
+  const [currentIndex, setCurrentIndex] =
+    useState(0);
+
+  /*
+    Safety check in case the promotion list
+    changes after the component is mounted.
+  */
+
+  useEffect(() => {
+    if (
+      currentIndex >= promotions.length
+    ) {
+      setCurrentIndex(0);
+    }
+  }, [
+    currentIndex,
+    promotions.length,
+  ]);
+
+  /*
+    Automatically rotate when there is
+    more than one active promotion.
+  */
+
+  useEffect(() => {
+    if (promotions.length <= 1) {
+      return undefined;
+    }
+
+    const interval = setInterval(() => {
+      setCurrentIndex((previous) =>
+        previous + 1 >= promotions.length
+          ? 0
+          : previous + 1
+      );
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [promotions.length]);
+
+  if (!promotions.length) {
+    return null;
+  }
+
+  const promotion =
+    promotions[currentIndex];
+
+  const buttonText =
+    promotion.buttonText ||
+    "SHOP NOW";
+
+  const buttonUrl =
+    promotion.buttonUrl ||
+    "/shop";
+
+  const image =
+    promotion.image?.url ||
+    promotion.image ||
+    "";
+
+  const title =
+    promotion.title ||
+    "THE MOST ICONIC GYM WEAR";
+
+  const subtitle =
+    promotion.subtitle ||
+    "";
+
+  const description =
+    promotion.description ||
+    "";
+
+  const discount =
+    promotion.discount;
+
+  return (
+    <section className="relative overflow-hidden bg-neutral-950 text-white">
+
+      {image && (
+        <img
+          src={image}
+          alt={title}
+          className="absolute inset-0 h-full w-full object-cover opacity-45"
+        />
+      )}
+
+      <div className="absolute inset-0 bg-black/55" />
+
+      <div className="relative mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-20">
+
+        <div className="grid items-center gap-10 md:grid-cols-[1fr_auto]">
+
+          <motion.div
+            key={promotion._id || promotion.id}
+            initial={{
+              opacity: 0,
+              y: 20,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            transition={{
+              duration: 0.5,
+            }}
+            className="max-w-3xl"
+          >
+
+            <p className="text-xs font-bold uppercase tracking-[0.3em] text-neutral-400">
+
+              FITFORGE PROMOTION
+
+            </p>
+
+            <h2 className="mt-3 text-4xl font-black uppercase tracking-[-0.03em] md:text-6xl">
+
+              {title}
+
+            </h2>
+
+            {subtitle && (
+              <p className="mt-4 text-sm font-bold uppercase tracking-[0.18em] text-neutral-300 md:text-base">
+
+                {subtitle}
+
+              </p>
+            )}
+
+            {description && (
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-neutral-300">
+
+                {description}
+
+              </p>
+            )}
+
+            {discount !== undefined &&
+              discount !== null &&
+              discount !== "" && (
+                <div className="mt-5 inline-flex border border-white/30 px-4 py-2 text-sm font-black uppercase tracking-[0.15em]">
+
+                  {typeof discount === "number"
+                    ? `${discount}% OFF`
+                    : discount}
+
+                </div>
+              )}
+
+            <div className="mt-7">
+
+              <Link
+                to={buttonUrl}
+                className="group inline-flex items-center gap-3 bg-white px-7 py-4 text-sm font-black text-black transition hover:bg-neutral-200"
+              >
+
+                {buttonText}
+
+                <ArrowRight
+                  size={17}
+                  className="transition-transform group-hover:translate-x-1"
+                />
+
+              </Link>
+
+            </div>
+
+          </motion.div>
+
+          {promotions.length > 1 && (
+            <div className="flex items-center gap-2 md:justify-end">
+
+              {promotions.map(
+                (item, index) => (
+                  <button
+                    key={
+                      item._id ||
+                      item.id ||
+                      index
+                    }
+                    type="button"
+                    aria-label={`Show promotion ${
+                      index + 1
+                    }`}
+                    onClick={() =>
+                      setCurrentIndex(index)
+                    }
+                    className={`h-2 transition-all ${
+                      index === currentIndex
+                        ? "w-10 bg-white"
+                        : "w-2 bg-white/40"
+                    }`}
+                  />
+                )
+              )}
+
+            </div>
+          )}
+
+        </div>
+
+      </div>
+
+    </section>
+  );
+};
+
+
+// ===========================================================
+// FEATURE
+// ===========================================================
 
 const Feature = ({
   icon,
@@ -306,11 +723,15 @@ const Feature = ({
 }) => {
   return (
     <div className="flex items-center gap-4 border-neutral-200 px-6 py-7 md:border-r last:border-r-0">
+
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black text-white">
+
         {icon}
+
       </div>
 
       <div>
+
         <p className="text-sm font-bold">
           {title}
         </p>
@@ -318,11 +739,17 @@ const Feature = ({
         <p className="mt-1 text-xs text-neutral-500">
           {text}
         </p>
+
       </div>
+
     </div>
   );
 };
 
+
+// ===========================================================
+// PRODUCT SECTION
+// ===========================================================
 
 const ProductSection = ({
   eyebrow,
@@ -332,48 +759,69 @@ const ProductSection = ({
 }) => {
   return (
     <section className="mx-auto max-w-7xl px-5 py-20 md:px-8 md:py-28">
+
       <div className="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
 
         <div>
+
           <p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-400">
+
             {eyebrow}
+
           </p>
 
           <h2 className="mt-2 text-3xl font-black tracking-tight md:text-5xl">
+
             {title}
+
           </h2>
 
           <p className="mt-3 text-sm text-neutral-500">
+
             {subtitle}
+
           </p>
+
         </div>
 
         <Link
           to="/shop"
           className="group inline-flex items-center gap-2 text-sm font-bold"
         >
+
           VIEW ALL
 
           <ArrowRight
             size={16}
             className="transition-transform group-hover:translate-x-1"
           />
+
         </Link>
 
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+
         {products.map((product) => (
           <ProductCard
-            key={product._id || product.id}
+            key={
+              product._id ||
+              product.id
+            }
             product={product}
           />
         ))}
+
       </div>
+
     </section>
   );
 };
 
+
+// ===========================================================
+// COLLECTION SECTION
+// ===========================================================
 
 const CollectionSection = ({
   collection,
@@ -390,11 +838,13 @@ const CollectionSection = ({
           : "bg-neutral-100 text-black"
       }
     >
+
       <div className="mx-auto max-w-7xl px-5 py-20 md:px-8 md:py-28">
 
         <div className="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
 
           <div>
+
             <p
               className={
                 dark
@@ -402,11 +852,15 @@ const CollectionSection = ({
                   : "text-xs font-bold uppercase tracking-[0.25em] text-neutral-500"
               }
             >
+
               {collection}
+
             </p>
 
             <h2 className="mt-2 text-3xl font-black tracking-tight md:text-5xl">
+
               {title}
+
             </h2>
 
             <p
@@ -416,8 +870,11 @@ const CollectionSection = ({
                   : "mt-3 text-sm text-neutral-600"
               }
             >
+
               {subtitle}
+
             </p>
+
           </div>
 
           <Link
@@ -428,25 +885,34 @@ const CollectionSection = ({
             }
             className="inline-flex items-center gap-2 text-sm font-bold"
           >
+
             EXPLORE
 
             <ArrowRight size={16} />
+
           </Link>
 
         </div>
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+
           {products.map((product) => (
             <ProductCard
-              key={product._id || product.id}
+              key={
+                product._id ||
+                product.id
+              }
               product={product}
             />
           ))}
+
         </div>
 
       </div>
+
     </section>
   );
 };
 
 export default Home;
+
