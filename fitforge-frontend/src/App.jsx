@@ -1,3 +1,4 @@
+
 import {
   BrowserRouter,
   Navigate,
@@ -44,6 +45,8 @@ import AdminHomepage from "./admin/AdminHomepage";
 import AdminCategories from "./admin/AdminCategories";
 import AdminReviews from "./admin/AdminReviews";
 import AdminCoupons from "./admin/AdminCoupons";
+import AdminSettings from "./admin/AdminSettings";
+import AdminPayments from "./admin/AdminPayments";
 
 // =====================================================
 // AUTH
@@ -94,7 +97,6 @@ const ProtectedRoute = ({ children }) => {
 const App = () => {
   return (
     <BrowserRouter>
-      {/* Toast Notifications */}
       <Toaster
         position="top-right"
         richColors
@@ -102,13 +104,11 @@ const App = () => {
       />
 
       <Routes>
-
         {/* =================================================
             CUSTOMER WEBSITE
         ================================================== */}
 
         <Route element={<Layout />}>
-
           {/* HOME */}
           <Route
             path="/"
@@ -121,7 +121,9 @@ const App = () => {
             element={<Shop />}
           />
 
-          {/* PERFORMANCE */}
+          {/* PERFORMANCE
+              DO NOT CHANGE
+          */}
           <Route
             path="/performance"
             element={
@@ -129,7 +131,9 @@ const App = () => {
             }
           />
 
-          {/* LUXURY */}
+          {/* LUXURY
+              DO NOT CHANGE
+          */}
           <Route
             path="/luxury"
             element={
@@ -206,7 +210,6 @@ const App = () => {
               </ProtectedRoute>
             }
           />
-
         </Route>
 
         {/* =================================================
@@ -244,7 +247,6 @@ const App = () => {
           }
         />
 
-        {/* ADD PRODUCT */}
         <Route
           path="/admin/products/add"
           element={
@@ -254,7 +256,6 @@ const App = () => {
           }
         />
 
-        {/* EDIT PRODUCT */}
         <Route
           path="/admin/products/edit/:id"
           element={
@@ -290,7 +291,6 @@ const App = () => {
           }
         />
 
-        {/* ADMIN ORDER DETAILS */}
         <Route
           path="/admin/orders/:id"
           element={
@@ -313,7 +313,6 @@ const App = () => {
           }
         />
 
-        {/* ADMIN CUSTOMER DETAILS */}
         <Route
           path="/admin/customers/:id"
           element={
@@ -362,6 +361,7 @@ const App = () => {
           }
         />
 
+
         {/* =================================================
             ADMIN REVIEWS
         ================================================== */}
@@ -388,6 +388,23 @@ const App = () => {
           }
         />
 
+        <Route
+  path="/admin/settings"
+  element={
+    <AdminRoute>
+      <AdminSettings />
+    </AdminRoute>
+  }
+/>
+<Route
+  path="/admin/payments"
+  element={
+    <AdminRoute>
+      <AdminPayments />
+    </AdminRoute>
+  }
+/>
+
         {/* =================================================
             404
         ================================================== */}
@@ -401,10 +418,10 @@ const App = () => {
             />
           }
         />
-
       </Routes>
     </BrowserRouter>
   );
 };
 
 export default App;
+

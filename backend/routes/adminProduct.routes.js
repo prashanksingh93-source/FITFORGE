@@ -5,36 +5,35 @@ import {
   getAdminProductById,
   createProduct,
   updateProduct,
-  toggleProduct,
   deleteProduct,
+  toggleProduct,
 } from "../controllers/adminProduct.controller.js";
 
-import {
-  authenticateUser,
-  requireAdmin,
-} from "../middleware/auth.middleware.js";
+import { protect } from "../middleware/authMiddleware.js";
+import { adminMiddleware } from "../middleware/adminMiddleware.js";
 
 const router = express.Router();
 
-router.use(authenticateUser);
-router.use(requireAdmin);
+// Every route below requires logged-in admin
+router.use(protect);
+router.use(adminMiddleware);
 
-// Get all products
+// GET /api/admin/products
 router.get("/", getAllAdminProducts);
 
-// Create product
-router.post("/", createProduct);
-
-// Get single product
+// GET /api/admin/products/:id
 router.get("/:id", getAdminProductById);
 
-// Update product
+// POST /api/admin/products
+router.post("/", createProduct);
+
+// PATCH /api/admin/products/:id
 router.patch("/:id", updateProduct);
 
-// Activate / deactivate product
-router.patch("/:id/toggle", toggleProduct);
-
-// Delete product
+// DELETE /api/admin/products/:id
 router.delete("/:id", deleteProduct);
+
+// PATCH /api/admin/products/:id/toggle
+router.patch("/:id/toggle", toggleProduct);
 
 export default router;

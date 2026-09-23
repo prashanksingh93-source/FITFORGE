@@ -8,100 +8,146 @@ import {
 
 import api from "../services/api";
 
+import {
+  getWishlist,
+  toggleWishlist as toggleWishlistApi,
+} from "../services/wishlistService";
+
 const StoreContext = createContext(null);
 
-// ========================================
-// LOCAL STORAGE HELPERS
-// ========================================
+const CART_STORAGE_KEY = "fitforge-cart";
+const WISHLIST_STORAGE_KEY = "fitforge-wishlist";
 
-const getSavedCart = () => {
+/*
+|--------------------------------------------------------------------------
+| LOCAL STORAGE HELPERS
+|--------------------------------------------------------------------------
+*/
+
+const getLocalStorage = (key, fallback) => {
   try {
-    const savedCart =
-      localStorage.getItem("fitforge-cart");
+    const value = localStorage.getItem(key);
 
-    if (!savedCart) {
-      return [];
+    if (!value) {
+      return fallback;
     }
 
-    const parsedCart = JSON.parse(savedCart);
+    const parsed = JSON.parse(value);
 
-    return Array.isArray(parsedCart)
-      ? parsedCart
-      : [];
+    return parsed ?? fallback;
   } catch (error) {
     console.error(
-      "Failed to load cart:",
+      `Failed to read ${key} from localStorage:`,
       error
     );
 
-    return [];
+    return fallback;
   }
 };
 
-const getSavedWishlist = () => {
+const saveLocalStorage = (key, value) => {
   try {
-    const savedWishlist =
-      localStorage.getItem(
-        "fitforge-wishlist"
-      );
-
-    if (!savedWishlist) {
-      return [];
-    }
-
-    const parsedWishlist =
-      JSON.parse(savedWishlist);
-
-    return Array.isArray(parsedWishlist)
-      ? parsedWishlist
-      : [];
+    localStorage.setItem(
+      key,
+      JSON.stringify(value)
+    );
   } catch (error) {
     console.error(
-      "Failed to load wishlist:",
+      `Failed to save ${key} to localStorage:`,
       error
     );
-
-    return [];
   }
 };
 
-// ========================================
-// STORE PROVIDER
-// ========================================
+/*
+|--------------------------------------------------------------------------
+| PRODUCT PRICE
+|--------------------------------------------------------------------------
+|
+| This price is only for displaying cart information.
+|
+| Final checkout price MUST always be calculated
+| and verified by the backend.
+|
+|--------------------------------------------------------------------------
+*/
 
-export const StoreProvider = ({
-  children,
-}) => {
-  // ======================================
-  // PRODUCTS
-  // ======================================
+const getProductPrice = (product) => {
+  if (
+    product?.salePrice !== null &&
+    product?.salePrice !== undefined &&
+    Number(product.salePrice) >= 0
+  ) {
+    return Number(product.salePrice);
+  }
 
-  const [products, setProducts] =
-    useState([]);
+  return Number(product?.price || 0);
+};
 
-  const [loading, setLoading] =
-    useState(true);
+/*
+|--------------------------------------------------------------------------
+| AUTHENTICATION CHECK
+|--------------------------------------------------------------------------
+*/
 
-  const [error, setError] =
-    useState("");
+const hasAuthenticationToken = () => {
+  return Boolean(
+    localStorage.getItem("fitforge-token")
+  );
+};
 
-  // ======================================
-  // CART
-  // ======================================
+/*
+|--------------------------------------------------------------------------
+| STORE PROVIDER
+|--------------------------------------------------------------------------
+*/
 
-  const [cart, setCart] =
-    useState(getSavedCart);
+export const StoreProvider = ({ children }) => {
+  /*
+  |--------------------------------------------------------------------------
+  | PRODUCTS
+  |--------------------------------------------------------------------------
+  */
 
-  // ======================================
-  // WISHLIST
-  // ======================================
+  const [products, setProducts] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState("");
+
+  /*
+  |--------------------------------------------------------------------------
+  | CART
+  |--------------------------------------------------------------------------
+  */
+
+  const [cart, setCart] = useState(() =>
+    getLocalStorage(
+      CART_STORAGE_KEY,
+      []
+    )
+  );
+
+  const [cartLoading, setCartLoading] =
+    useState(false);
+
+  /*
+  |--------------------------------------------------------------------------
+  | WISHLIST
+  |--------------------------------------------------------------------------
+  */
 
   const [wishlist, setWishlist] =
-    useState(getSavedWishlist);
+    useState([]);
 
-  // ======================================
-  // FETCH PRODUCTS
-  // ======================================
+  const [wishlistLoading, setWishlistLoading] =
+    useState(false);
+
+  /*
+  |--------------------------------------------------------------------------
+  | FETCH PRODUCTS
+  |--------------------------------------------------------------------------
+  */
 
   const fetchProducts = useCallback(
     async () => {
@@ -138,105 +184,274 @@ export const StoreProvider = ({
     []
   );
 
+  /*
+  |--------------------------------------------------------------------------
+  | LOAD PRODUCTS ON APP START
+  |--------------------------------------------------------------------------
+  */
+
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
 
-  // ======================================
-  // SAVE CART
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | GET DATABASE CART
+  |--------------------------------------------------------------------------
+  */
+
+  const fetchCart = useCallback(
+    async () => {
+      /*
+       * Guest users don't have a database cart.
+       */
+      if (!hasAuthenticationToken()) {
+        const savedCart =
+          getLocalStorage(
+            CART_STORAGE_KEY,
+            []
+          );
+
+        setCart(
+          Array.isArray(savedCart)
+            ? savedCart
+            : []
+        );
+
+        return;
+      }
+
+      try {
+        setCartLoading(true);
+
+        const response =
+          await api.get("/cart");
+
+        if (response.data?.success) {
+          const serverItems =
+            response.data.cart?.items ||
+            [];
+
+          setCart(serverItems);
+
+          saveLocalStorage(
+            CART_STORAGE_KEY,
+            serverItems
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Failed to fetch cart:",
+          error
+        );
+
+        /*
+         * Don't destroy the user's local cart
+         * if the backend is temporarily unavailable.
+         */
+      } finally {
+        setCartLoading(false);
+      }
+    },
+    []
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | LOAD DATABASE CART WHEN USER LOGS IN
+  |--------------------------------------------------------------------------
+  */
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        "fitforge-cart",
-        JSON.stringify(cart)
-      );
-    } catch (error) {
-      console.error(
-        "Failed to save cart:",
-        error
-      );
-    }
+    fetchCart();
+  }, [fetchCart]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | KEEP LOCAL CART IN SYNC
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    saveLocalStorage(
+      CART_STORAGE_KEY,
+      cart
+    );
   }, [cart]);
 
-  // ======================================
-  // SAVE WISHLIST
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | FETCH WISHLIST
+  |--------------------------------------------------------------------------
+  */
+
+  const fetchWishlist = useCallback(
+    async () => {
+      /*
+       * Guest wishlist
+       */
+
+      if (!hasAuthenticationToken()) {
+        const savedWishlist =
+          getLocalStorage(
+            WISHLIST_STORAGE_KEY,
+            []
+          );
+
+        setWishlist(
+          Array.isArray(savedWishlist)
+            ? savedWishlist
+            : []
+        );
+
+        return;
+      }
+
+      /*
+       * Authenticated wishlist
+       */
+
+      try {
+        setWishlistLoading(true);
+
+        const response =
+          await getWishlist();
+
+        if (response?.success) {
+          setWishlist(
+            response.wishlist?.products ||
+              []
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Failed to fetch wishlist:",
+          error
+        );
+
+        /*
+         * Keep an empty wishlist rather than
+         * crashing the application.
+         */
+        setWishlist([]);
+      } finally {
+        setWishlistLoading(false);
+      }
+    },
+    []
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | LOAD WISHLIST
+  |--------------------------------------------------------------------------
+  */
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        "fitforge-wishlist",
-        JSON.stringify(wishlist)
-      );
-    } catch (error) {
-      console.error(
-        "Failed to save wishlist:",
-        error
+    fetchWishlist();
+  }, [fetchWishlist]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | KEEP GUEST WISHLIST IN LOCAL STORAGE
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    if (!hasAuthenticationToken()) {
+      saveLocalStorage(
+        WISHLIST_STORAGE_KEY,
+        wishlist
       );
     }
   }, [wishlist]);
 
-  // ======================================
-  // REFRESH CART FROM STORAGE
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | ADD PRODUCT TO CART
+  |--------------------------------------------------------------------------
+  */
 
-  const refreshCartFromStorage =
-    useCallback(() => {
-      try {
-        const savedCart =
-          localStorage.getItem(
-            "fitforge-cart"
-          );
-
-        if (!savedCart) {
-          setCart([]);
-          return;
-        }
-
-        const parsedCart =
-          JSON.parse(savedCart);
-
-        if (Array.isArray(parsedCart)) {
-          setCart(parsedCart);
-        } else {
-          setCart([]);
-        }
-      } catch (error) {
-        console.error(
-          "Failed to refresh cart:",
-          error
-        );
-
-        setCart([]);
-      }
-    }, []);
-
-  // ======================================
-  // ADD TO CART
-  // ======================================
-
-  const addToCart = (
+  const addToCart = async (
     product,
     quantity = 1,
     size = "",
     color = ""
   ) => {
     if (!product?._id) {
-      console.error(
-        "Invalid product:",
-        product
+      throw new Error(
+        "Invalid product"
       );
-
-      return;
     }
 
-    const safeQuantity =
-      Math.max(
-        1,
-        Number(quantity) || 1
-      );
+    const safeQuantity = Math.max(
+      1,
+      Number(quantity) || 1
+    );
+
+    /*
+     * ---------------------------------------------------------
+     * AUTHENTICATED USER
+     * ---------------------------------------------------------
+     *
+     * Database is the source of truth.
+     */
+
+    if (hasAuthenticationToken()) {
+      try {
+        setCartLoading(true);
+
+        const response =
+          await api.post(
+            "/cart",
+            {
+              productId:
+                product._id,
+              quantity:
+                safeQuantity,
+              size,
+              color,
+            }
+          );
+
+        if (!response.data?.success) {
+          throw new Error(
+            response.data?.message ||
+              "Unable to add product to cart"
+          );
+        }
+
+        const serverCart =
+          response.data.cart?.items ||
+          [];
+
+        setCart(serverCart);
+
+        saveLocalStorage(
+          CART_STORAGE_KEY,
+          serverCart
+        );
+
+        return response.data;
+      } catch (error) {
+        console.error(
+          "Add to cart failed:",
+          error
+        );
+
+        throw error;
+      } finally {
+        setCartLoading(false);
+      }
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * GUEST USER
+     * ---------------------------------------------------------
+     *
+     * Guest cart is stored locally.
+     */
 
     setCart((currentCart) => {
       const safeCart =
@@ -253,138 +468,184 @@ export const StoreProvider = ({
             item.color === color
         );
 
-      let updatedCart;
-
       if (existingItem) {
-        updatedCart =
-          safeCart.map(
-            (item) => {
-              if (
-                item?.product?._id ===
-                  product._id &&
-                item.size === size &&
-                item.color === color
-              ) {
-                const currentQuantity =
-                  Number(
-                    item.quantity || 0
-                  );
+        return safeCart.map((item) => {
+          if (
+            item?.product?._id ===
+              product._id &&
+            item.size === size &&
+            item.color === color
+          ) {
+            const currentQuantity =
+              Number(
+                item.quantity || 0
+              );
 
-                const stock =
-                  Number(
-                    product.stock || 0
-                  );
+            const requestedQuantity =
+              currentQuantity +
+              safeQuantity;
 
-                const requestedQuantity =
-                  currentQuantity +
-                  safeQuantity;
+            const stock = Number(
+              product.stock || 0
+            );
 
-                const finalQuantity =
-                  stock > 0
-                    ? Math.min(
-                        requestedQuantity,
-                        stock
-                      )
-                    : requestedQuantity;
+            return {
+              ...item,
+              product,
+              size,
+              color,
+              quantity:
+                stock > 0
+                  ? Math.min(
+                      requestedQuantity,
+                      stock
+                    )
+                  : requestedQuantity,
+            };
+          }
 
-                return {
-                  ...item,
-                  product,
-                  quantity:
-                    finalQuantity,
-                  size,
-                  color,
-                };
-              }
-
-              return item;
-            }
-          );
-      } else {
-        const stock =
-          Number(
-            product.stock || 0
-          );
-
-        const finalQuantity =
-          stock > 0
-            ? Math.min(
-                safeQuantity,
-                stock
-              )
-            : safeQuantity;
-
-        updatedCart = [
-          ...safeCart,
-          {
-            product,
-            quantity:
-              finalQuantity,
-            size,
-            color,
-          },
-        ];
+          return item;
+        });
       }
 
-      localStorage.setItem(
-        "fitforge-cart",
-        JSON.stringify(updatedCart)
+      const stock = Number(
+        product.stock || 0
       );
 
-      console.log(
-        "FITFORGE CART UPDATED:",
-        updatedCart
-      );
+      const finalQuantity =
+        stock > 0
+          ? Math.min(
+              safeQuantity,
+              stock
+            )
+          : safeQuantity;
 
-      return updatedCart;
+      return [
+        ...safeCart,
+        {
+          /*
+           * Temporary local ID for guest cart.
+           */
+          _id:
+            `guest-${product._id}-${Date.now()}`,
+
+          product,
+
+          quantity:
+            finalQuantity,
+
+          size,
+
+          color,
+        },
+      ];
     });
+
+    return {
+      success: true,
+      message: "Product added to cart",
+    };
   };
 
-  // ======================================
-  // REMOVE FROM CART
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | REMOVE FROM CART
+  |--------------------------------------------------------------------------
+  */
 
-  const removeFromCart = (
+  const removeFromCart = async (
     productId,
     size = "",
-    color = ""
+    color = "",
+    cartItemId = null
   ) => {
-    setCart((currentCart) => {
-      const updatedCart =
-        currentCart.filter(
-          (item) =>
-            !(
-              item?.product?._id ===
-                productId &&
-              item.size === size &&
-              item.color === color
-            )
+    /*
+     * Authenticated user
+     */
+
+    if (
+      hasAuthenticationToken() &&
+      cartItemId
+    ) {
+      try {
+        setCartLoading(true);
+
+        const response =
+          await api.delete(
+            `/cart/${cartItemId}`
+          );
+
+        if (!response.data?.success) {
+          throw new Error(
+            response.data?.message ||
+              "Unable to remove cart item"
+          );
+        }
+
+        const serverCart =
+          response.data.cart?.items ||
+          [];
+
+        setCart(serverCart);
+
+        saveLocalStorage(
+          CART_STORAGE_KEY,
+          serverCart
         );
 
-      localStorage.setItem(
-        "fitforge-cart",
-        JSON.stringify(updatedCart)
-      );
+        return response.data;
+      } catch (error) {
+        console.error(
+          "Remove cart item failed:",
+          error
+        );
 
-      return updatedCart;
-    });
+        throw error;
+      } finally {
+        setCartLoading(false);
+      }
+    }
+
+    /*
+     * Guest user
+     */
+
+    setCart((currentCart) =>
+      currentCart.filter(
+        (item) =>
+          !(
+            item?.product?._id ===
+              productId &&
+            item.size === size &&
+            item.color === color
+          )
+      )
+    );
+
+    return {
+      success: true,
+      message: "Item removed from cart",
+    };
   };
 
-  // ======================================
-  // UPDATE CART QUANTITY
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | UPDATE CART QUANTITY
+  |--------------------------------------------------------------------------
+  */
 
-  const updateCartQuantity = (
+  const updateCartQuantity = async (
     productId,
     quantity,
     size = "",
-    color = ""
+    color = "",
+    cartItemId = null
   ) => {
     const newQuantity =
       Number(quantity);
 
     if (
-      !Number.isFinite(
+      !Number.isInteger(
         newQuantity
       ) ||
       newQuantity < 1
@@ -392,110 +653,302 @@ export const StoreProvider = ({
       return;
     }
 
-    setCart((currentCart) => {
-      const updatedCart =
-        currentCart.map(
-          (item) => {
-            if (
-              item?.product?._id !==
-                productId ||
-              item.size !== size ||
-              item.color !== color
-            ) {
-              return item;
-            }
+    /*
+     * Authenticated user
+     */
 
-            const stock =
-              Number(
-                item.product?.stock ||
-                  0
-              );
+    if (
+      hasAuthenticationToken() &&
+      cartItemId
+    ) {
+      try {
+        setCartLoading(true);
 
-            const finalQuantity =
-              stock > 0
-                ? Math.min(
-                    newQuantity,
-                    stock
-                  )
-                : newQuantity;
-
-            return {
-              ...item,
+        const response =
+          await api.patch(
+            `/cart/${cartItemId}`,
+            {
               quantity:
-                finalQuantity,
-            };
-          }
+                newQuantity,
+            }
+          );
+
+        if (!response.data?.success) {
+          throw new Error(
+            response.data?.message ||
+              "Unable to update cart"
+          );
+        }
+
+        const serverCart =
+          response.data.cart?.items ||
+          [];
+
+        setCart(serverCart);
+
+        saveLocalStorage(
+          CART_STORAGE_KEY,
+          serverCart
         );
 
-      localStorage.setItem(
-        "fitforge-cart",
-        JSON.stringify(updatedCart)
-      );
+        return response.data;
+      } catch (error) {
+        console.error(
+          "Update cart failed:",
+          error
+        );
 
-      return updatedCart;
-    });
-  };
+        throw error;
+      } finally {
+        setCartLoading(false);
+      }
+    }
 
-  // ======================================
-  // CLEAR CART
-  // ======================================
+    /*
+     * Guest user
+     */
 
-  const clearCart = () => {
-    localStorage.removeItem(
-      "fitforge-cart"
+    setCart((currentCart) =>
+      currentCart.map((item) => {
+        if (
+          item?.product?._id !==
+            productId ||
+          item.size !== size ||
+          item.color !== color
+        ) {
+          return item;
+        }
+
+        const stock =
+          Number(
+            item.product?.stock || 0
+          );
+
+        const finalQuantity =
+          stock > 0
+            ? Math.min(
+                newQuantity,
+                stock
+              )
+            : newQuantity;
+
+        return {
+          ...item,
+          quantity:
+            finalQuantity,
+        };
+      })
     );
 
-    setCart([]);
+    return {
+      success: true,
+      message: "Cart updated",
+    };
   };
 
-  // ======================================
-  // WISHLIST
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | CLEAR CART
+  |--------------------------------------------------------------------------
+  */
 
-  const toggleWishlist = (product) => {
+  const clearCart = async () => {
+    /*
+     * Authenticated user
+     */
+
+    if (hasAuthenticationToken()) {
+      try {
+        setCartLoading(true);
+
+        const response =
+          await api.delete("/cart");
+
+        if (!response.data?.success) {
+          throw new Error(
+            response.data?.message ||
+              "Unable to clear cart"
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Clear cart failed:",
+          error
+        );
+
+        throw error;
+      } finally {
+        setCartLoading(false);
+      }
+    }
+
+    /*
+     * Clear local state regardless.
+     */
+
+    setCart([]);
+
+    localStorage.removeItem(
+      CART_STORAGE_KEY
+    );
+
+    return {
+      success: true,
+      message: "Cart cleared",
+    };
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | REFRESH CART
+  |--------------------------------------------------------------------------
+  */
+
+  const refreshCartFromStorage =
+    useCallback(async () => {
+      if (hasAuthenticationToken()) {
+        await fetchCart();
+
+        return;
+      }
+
+      const savedCart =
+        getLocalStorage(
+          CART_STORAGE_KEY,
+          []
+        );
+
+      setCart(
+        Array.isArray(savedCart)
+          ? savedCart
+          : []
+      );
+    }, [fetchCart]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | TOGGLE WISHLIST
+  |--------------------------------------------------------------------------
+  */
+
+  const toggleWishlist = async (
+    product
+  ) => {
     if (!product?._id) {
       return;
     }
 
-    setWishlist((currentWishlist) => {
-      const exists =
-        currentWishlist.some(
-          (item) =>
-            item?._id === product._id
+    /*
+     * Authenticated user
+     *
+     * MongoDB is the source of truth.
+     */
+
+    if (hasAuthenticationToken()) {
+      try {
+        setWishlistLoading(true);
+
+        const response =
+          await toggleWishlistApi(
+            product._id
+          );
+
+        if (!response?.success) {
+          throw new Error(
+            response?.message ||
+              "Unable to update wishlist"
+          );
+        }
+
+        setWishlist(
+          response.wishlist?.products ||
+            []
         );
 
-      if (exists) {
-        return currentWishlist.filter(
-          (item) =>
-            item?._id !== product._id
+        return response;
+      } catch (error) {
+        console.error(
+          "Wishlist update failed:",
+          error
         );
+
+        throw error;
+      } finally {
+        setWishlistLoading(false);
       }
+    }
 
-      return [
-        ...currentWishlist,
-        product,
-      ];
-    });
+    /*
+     * Guest user
+     */
+
+    let added = false;
+
+    setWishlist(
+      (currentWishlist) => {
+        const safeWishlist =
+          Array.isArray(
+            currentWishlist
+          )
+            ? currentWishlist
+            : [];
+
+        const exists =
+          safeWishlist.some(
+            (item) =>
+              item?._id ===
+              product._id
+          );
+
+        if (exists) {
+          return safeWishlist.filter(
+            (item) =>
+              item?._id !==
+              product._id
+          );
+        }
+
+        added = true;
+
+        return [
+          ...safeWishlist,
+          product,
+        ];
+      }
+    );
+
+    return {
+      success: true,
+      added,
+      message: added
+        ? "Added to wishlist"
+        : "Removed from wishlist",
+    };
   };
 
-  // ======================================
-  // WISHLIST CHECK
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | CHECK WISHLIST
+  |--------------------------------------------------------------------------
+  */
 
   const isInWishlist = (
     productId
   ) => {
     return wishlist.some(
       (product) =>
-        product?._id === productId
+        product?._id ===
+        productId
     );
   };
 
-  // ======================================
-  // MOVE TO CART
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | MOVE WISHLIST PRODUCT TO CART
+  |--------------------------------------------------------------------------
+  */
 
-  const moveToCart = (
+  const moveToCart = async (
     product,
     quantity = 1,
     size = "",
@@ -505,28 +958,44 @@ export const StoreProvider = ({
       return;
     }
 
-    addToCart(
+    const selectedSize =
+      size ||
+      product.sizes?.[0] ||
+      "";
+
+    const selectedColor =
+      color ||
+      product.colors?.[0]
+        ?.name ||
+      "";
+
+    await addToCart(
       product,
       quantity,
-      size ||
-        product.sizes?.[0] ||
-        "",
-      color ||
-        product.colors?.[0]?.name ||
-        ""
+      selectedSize,
+      selectedColor
     );
 
-    setWishlist((currentWishlist) =>
-      currentWishlist.filter(
-        (item) =>
-          item?._id !== product._id
-      )
+    /*
+     * Remove from wishlist
+     */
+
+    await toggleWishlist(
+      product
     );
+
+    return {
+      success: true,
+      message:
+        "Product moved to cart",
+    };
   };
 
-  // ======================================
-  // CART COUNT
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | CART COUNT
+  |--------------------------------------------------------------------------
+  */
 
   const cartCount = cart.reduce(
     (total, item) =>
@@ -537,9 +1006,18 @@ export const StoreProvider = ({
     0
   );
 
-  // ======================================
-  // CART TOTAL
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | CART TOTAL
+  |--------------------------------------------------------------------------
+  |
+  | Display value only.
+  |
+  | Backend MUST recalculate final
+  | checkout amount.
+  |
+  |--------------------------------------------------------------------------
+  */
 
   const cartTotal = cart.reduce(
     (total, item) => {
@@ -551,13 +1029,9 @@ export const StoreProvider = ({
       }
 
       const price =
-        product.salePrice != null
-          ? Number(
-              product.salePrice
-            )
-          : Number(
-              product.price || 0
-            );
+        getProductPrice(
+          product
+        );
 
       return (
         total +
@@ -570,33 +1044,54 @@ export const StoreProvider = ({
     0
   );
 
-  // ======================================
-  // PROVIDER
-  // ======================================
+  /*
+  |--------------------------------------------------------------------------
+  | WISHLIST COUNT
+  |--------------------------------------------------------------------------
+  */
+
+  const wishlistCount =
+    wishlist.length;
+
+  /*
+  |--------------------------------------------------------------------------
+  | PROVIDER
+  |--------------------------------------------------------------------------
+  */
 
   return (
     <StoreContext.Provider
       value={{
+        /*
+         * Products
+         */
         products,
         loading,
         error,
         fetchProducts,
 
+        /*
+         * Cart
+         */
         cart,
-
-        // Compatibility with Checkout
         cartItems: cart,
-
         cartCount,
         cartTotal,
-
+        cartLoading,
+        fetchCart,
         addToCart,
         removeFromCart,
         updateCartQuantity,
         clearCart,
         refreshCartFromStorage,
 
+        /*
+         * Wishlist
+         */
         wishlist,
+        wishlistCount,
+        wishlistLoading,
+        fetchWishlist,
         toggleWishlist,
         isInWishlist,
         moveToCart,
@@ -607,9 +1102,11 @@ export const StoreProvider = ({
   );
 };
 
-// ========================================
-// USE STORE
-// ========================================
+/*
+|--------------------------------------------------------------------------
+| USE STORE HOOK
+|--------------------------------------------------------------------------
+*/
 
 export const useStore = () => {
   const context =

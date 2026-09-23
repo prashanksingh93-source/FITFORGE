@@ -1,5 +1,9 @@
 import Coupon from "../models/Coupon.js";
 
+/* =========================================================
+   VALIDATE COUPON DATA
+========================================================= */
+
 const validateCouponData = (data) => {
   const {
     code,
@@ -10,6 +14,7 @@ const validateCouponData = (data) => {
     usageLimit,
     startDate,
     endDate,
+    collection,
   } = data;
 
   if (!code?.trim()) {
@@ -35,7 +40,9 @@ const validateCouponData = (data) => {
 
   if (
     minimumOrderAmount !== undefined &&
-    Number(minimumOrderAmount) < 0
+    minimumOrderAmount !== "" &&
+    (!Number.isFinite(Number(minimumOrderAmount)) ||
+      Number(minimumOrderAmount) < 0)
   ) {
     return "Minimum order amount cannot be negative";
   }
@@ -43,7 +50,8 @@ const validateCouponData = (data) => {
   if (
     maximumDiscount !== undefined &&
     maximumDiscount !== "" &&
-    Number(maximumDiscount) < 0
+    (!Number.isFinite(Number(maximumDiscount)) ||
+      Number(maximumDiscount) < 0)
   ) {
     return "Maximum discount cannot be negative";
   }
@@ -51,7 +59,8 @@ const validateCouponData = (data) => {
   if (
     usageLimit !== undefined &&
     usageLimit !== "" &&
-    Number(usageLimit) < 1
+    (!Number.isInteger(Number(usageLimit)) ||
+      Number(usageLimit) < 1)
   ) {
     return "Usage limit must be at least 1";
   }
@@ -64,8 +73,22 @@ const validateCouponData = (data) => {
     return "End date cannot be before start date";
   }
 
+  if (
+    collection &&
+    !["All", "Performance", "Luxury"].includes(
+      collection
+    )
+  ) {
+    return "Invalid collection";
+  }
+
   return null;
 };
+
+/* =========================================================
+   GET ALL COUPONS
+   GET /api/admin/coupons
+========================================================= */
 
 export const getCoupons = async (req, res) => {
   try {
@@ -76,6 +99,8 @@ export const getCoupons = async (req, res) => {
 
     const filter = {};
 
+    /* Status filter */
+
     if (status === "active") {
       filter.isActive = true;
     }
@@ -84,47 +109,58 @@ export const getCoupons = async (req, res) => {
       filter.isActive = false;
     }
 
+    /* Search */
+
     if (search.trim()) {
+      const searchRegex = {
+        $regex: search.trim(),
+        $options: "i",
+      };
+
       filter.$or = [
         {
-          code: {
-            $regex: search.trim(),
-            $options: "i",
-          },
+          code: searchRegex,
         },
         {
-          description: {
-            $regex: search.trim(),
-            $options: "i",
-          },
+          description: searchRegex,
         },
       ];
     }
 
-    const coupons = await Coupon.find(filter).sort({
-      createdAt: -1,
-    });
+    const coupons = await Coupon.find(filter)
+      .sort({
+        createdAt: -1,
+      })
+      .lean();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: coupons.length,
       coupons,
     });
   } catch (error) {
-    console.error("Get coupons error:", error);
+    console.error(
+      "Get coupons error:",
+      error
+    );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to fetch coupons",
     });
   }
 };
 
+/* =========================================================
+   GET SINGLE COUPON
+   GET /api/admin/coupons/:id
+========================================================= */
+
 export const getCouponById = async (req, res) => {
   try {
     const coupon = await Coupon.findById(
       req.params.id
-    );
+    ).lean();
 
     if (!coupon) {
       return res.status(404).json({
@@ -133,7 +169,7 @@ export const getCouponById = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       coupon,
     });
@@ -143,12 +179,17 @@ export const getCouponById = async (req, res) => {
       error
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to fetch coupon",
     });
   }
 };
+
+/* =========================================================
+   CREATE COUPON
+   POST /api/admin/coupons
+========================================================= */
 
 export const createCoupon = async (req, res) => {
   try {
@@ -166,6 +207,8 @@ export const createCoupon = async (req, res) => {
       .trim()
       .toUpperCase();
 
+    /* Check duplicate code */
+
     const existingCoupon =
       await Coupon.findOne({ code });
 
@@ -176,11 +219,13 @@ export const createCoupon = async (req, res) => {
       });
     }
 
+    /* Create coupon */
+
     const coupon = await Coupon.create({
       code,
 
       description:
-        req.body.description || "",
+        req.body.description?.trim() || "",
 
       discountType:
         req.body.discountType,
@@ -189,7 +234,10 @@ export const createCoupon = async (req, res) => {
         Number(req.body.discountValue),
 
       minimumOrderAmount:
-        Number(req.body.minimumOrderAmount) || 0,
+        req.body.minimumOrderAmount === "" ||
+        req.body.minimumOrderAmount === undefined
+          ? 0
+          : Number(req.body.minimumOrderAmount),
 
       maximumDiscount:
         req.body.maximumDiscount === "" ||
@@ -203,11 +251,17 @@ export const createCoupon = async (req, res) => {
           ? null
           : Number(req.body.usageLimit),
 
+      usedCount: 0,
+
       startDate:
-        req.body.startDate || null,
+        req.body.startDate
+          ? new Date(req.body.startDate)
+          : null,
 
       endDate:
-        req.body.endDate || null,
+        req.body.endDate
+          ? new Date(req.body.endDate)
+          : null,
 
       collection:
         req.body.collection || "All",
@@ -219,7 +273,7 @@ export const createCoupon = async (req, res) => {
             req.body.isActive === "true",
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Coupon created successfully",
       coupon,
@@ -230,7 +284,16 @@ export const createCoupon = async (req, res) => {
       error
     );
 
-    res.status(500).json({
+    /* Duplicate key protection */
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Coupon code already exists",
+      });
+    }
+
+    return res.status(500).json({
       success: false,
       message:
         error.message ||
@@ -238,6 +301,11 @@ export const createCoupon = async (req, res) => {
     });
   }
 };
+
+/* =========================================================
+   UPDATE COUPON
+   PATCH /api/admin/coupons/:id
+========================================================= */
 
 export const updateCoupon = async (req, res) => {
   try {
@@ -266,10 +334,14 @@ export const updateCoupon = async (req, res) => {
       .trim()
       .toUpperCase();
 
+    /* Check duplicate */
+
     const duplicate =
       await Coupon.findOne({
         code,
-        _id: { $ne: coupon._id },
+        _id: {
+          $ne: coupon._id,
+        },
       });
 
     if (duplicate) {
@@ -279,10 +351,12 @@ export const updateCoupon = async (req, res) => {
       });
     }
 
+    /* Update fields */
+
     coupon.code = code;
 
     coupon.description =
-      req.body.description || "";
+      req.body.description?.trim() || "";
 
     coupon.discountType =
       req.body.discountType;
@@ -291,7 +365,10 @@ export const updateCoupon = async (req, res) => {
       Number(req.body.discountValue);
 
     coupon.minimumOrderAmount =
-      Number(req.body.minimumOrderAmount) || 0;
+      req.body.minimumOrderAmount === "" ||
+      req.body.minimumOrderAmount === undefined
+        ? 0
+        : Number(req.body.minimumOrderAmount);
 
     coupon.maximumDiscount =
       req.body.maximumDiscount === "" ||
@@ -306,10 +383,14 @@ export const updateCoupon = async (req, res) => {
         : Number(req.body.usageLimit);
 
     coupon.startDate =
-      req.body.startDate || null;
+      req.body.startDate
+        ? new Date(req.body.startDate)
+        : null;
 
     coupon.endDate =
-      req.body.endDate || null;
+      req.body.endDate
+        ? new Date(req.body.endDate)
+        : null;
 
     coupon.collection =
       req.body.collection || "All";
@@ -322,7 +403,7 @@ export const updateCoupon = async (req, res) => {
 
     await coupon.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Coupon updated successfully",
       coupon,
@@ -333,7 +414,14 @@ export const updateCoupon = async (req, res) => {
       error
     );
 
-    res.status(500).json({
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Coupon code already exists",
+      });
+    }
+
+    return res.status(500).json({
       success: false,
       message:
         error.message ||
@@ -341,6 +429,11 @@ export const updateCoupon = async (req, res) => {
     });
   }
 };
+
+/* =========================================================
+   TOGGLE COUPON
+   PATCH /api/admin/coupons/:id/toggle
+========================================================= */
 
 export const toggleCoupon = async (
   req,
@@ -362,7 +455,7 @@ export const toggleCoupon = async (
 
     await coupon.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: coupon.isActive
         ? "Coupon activated successfully"
@@ -375,12 +468,17 @@ export const toggleCoupon = async (
       error
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to update coupon",
     });
   }
 };
+
+/* =========================================================
+   DELETE COUPON
+   DELETE /api/admin/coupons/:id
+========================================================= */
 
 export const deleteCoupon = async (
   req,
@@ -402,7 +500,7 @@ export const deleteCoupon = async (
       coupon._id
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Coupon deleted successfully",
     });
@@ -412,9 +510,10 @@ export const deleteCoupon = async (
       error
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to delete coupon",
     });
   }
 };
+

@@ -1,867 +1,1877 @@
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
-import {
-  Link,
-  useNavigate,
-} from "react-router-dom";
-
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
-  ArrowRight,
-  MapPin,
+  CheckCircle2,
   CreditCard,
+  MapPin,
+  Package,
+  ShieldCheck,
+  Tag,
   Truck,
+  X,
 } from "lucide-react";
-
 import { toast } from "sonner";
 
 import api from "../services/api";
-
 import { useStore } from "../context/StoreContext";
-import { useAuth } from "../context/AuthContext";
 
-export default function Checkout() {
+const RAZORPAY_SCRIPT =
+  "https://checkout.razorpay.com/v1/checkout.js";
+
+const initialAddress = {
+  fullName: "",
+  phone: "",
+  addressLine: "",
+  city: "",
+  state: "",
+  pincode: "",
+  country: "India",
+};
+
+const Checkout = () => {
   const navigate = useNavigate();
 
   const {
     cart,
+    cartItems,
     clearCart,
+    fetchCart,
   } = useStore();
 
-  const { user } = useAuth();
-
-  // ==========================================
-  // LOCAL CART FALLBACK
-  // ==========================================
-
-  const [storedCart, setStoredCart] =
-    useState(() => {
-      try {
-        const saved =
-          localStorage.getItem(
-            "fitforge-cart"
-          );
-
-        if (!saved) {
-          return [];
-        }
-
-        const parsed =
-          JSON.parse(saved);
-
-        return Array.isArray(parsed)
-          ? parsed
-          : [];
-      } catch (error) {
-        console.error(
-          "Checkout cart error:",
-          error
-        );
-
-        return [];
-      }
-    });
-
-  // ==========================================
-  // SYNC STORAGE WHEN CHECKOUT OPENS
-  // ==========================================
-
-  useEffect(() => {
-    try {
-      const saved =
-        localStorage.getItem(
-          "fitforge-cart"
-        );
-
-      if (!saved) {
-        setStoredCart([]);
-        return;
-      }
-
-      const parsed =
-        JSON.parse(saved);
-
-      setStoredCart(
-        Array.isArray(parsed)
-          ? parsed
-          : []
-      );
-    } catch (error) {
-      console.error(
-        "Failed to read checkout cart:",
-        error
-      );
-
-      setStoredCart([]);
-    }
-  }, []);
-
-  // ==========================================
-  // USE CONTEXT CART FIRST
-  // STORAGE SECOND
-  // ==========================================
-
-  const checkoutItems = useMemo(() => {
-    if (
-      Array.isArray(cart) &&
-      cart.length > 0
-    ) {
-      return cart.filter(
-        (item) =>
-          item?.product?._id
-      );
-    }
-
-    return storedCart.filter(
-      (item) =>
-        item?.product?._id
-    );
-  }, [cart, storedCart]);
-
-  // ==========================================
-  // FORM
-  // ==========================================
-
-  const [form, setForm] = useState({
-    fullName:
-      user?.fullName || "",
-    phone:
-      user?.phone || "",
-    addressLine: "",
-    city: "",
-    state: "",
-    pincode: "",
-  });
+  const [address, setAddress] =
+    useState(initialAddress);
 
   const [paymentMethod, setPaymentMethod] =
     useState("RAZORPAY");
 
-  const [loading, setLoading] =
+  const [couponCode, setCouponCode] =
+    useState("");
+
+  const [appliedCoupon, setAppliedCoupon] =
+    useState(null);
+
+  const [loadingCoupon, setLoadingCoupon] =
     useState(false);
 
-  // ==========================================
-  // UPDATE FORM
-  // ==========================================
+  const [placingOrder, setPlacingOrder] =
+    useState(false);
 
-  const handleChange = (event) => {
+  const [error, setError] =
+    useState("");
+
+  /*
+   * ----------------------------------------------------------
+   * CART
+   * ----------------------------------------------------------
+   */
+
+  const normalizedCartItems = useMemo(() => {
+    if (
+      Array.isArray(cartItems) &&
+      cartItems.length > 0
+    ) {
+      return cartItems;
+    }
+
+    if (Array.isArray(cart?.items)) {
+      return cart.items;
+    }
+
+    if (Array.isArray(cart)) {
+      return cart;
+    }
+
+    return [];
+  }, [cartItems, cart]);
+
+  /*
+   * ----------------------------------------------------------
+   * SUBTOTAL
+   * ----------------------------------------------------------
+   */
+
+  const subtotal = useMemo(() => {
+    return normalizedCartItems.reduce(
+      (total, item) => {
+        const product =
+          item.product || item;
+
+        const price =
+          Number(
+            item.price ??
+              item.salePrice ??
+              product.salePrice ??
+              product.price ??
+              0
+          ) || 0;
+
+        const quantity =
+          Number(item.quantity ?? 1) || 1;
+
+        return (
+          total +
+          price * quantity
+        );
+      },
+      0
+    );
+  }, [normalizedCartItems]);
+
+  /*
+   * ----------------------------------------------------------
+   * COLLECTION
+   * ----------------------------------------------------------
+   */
+
+  const collection = useMemo(() => {
+    const collections =
+      normalizedCartItems
+        .map((item) => {
+          const product =
+            item.product || item;
+
+          return product.collection;
+        })
+        .filter(Boolean);
+
+    if (
+      collections.length > 0 &&
+      collections.every(
+        (item) =>
+          item === "Performance"
+      )
+    ) {
+      return "Performance";
+    }
+
+    if (
+      collections.length > 0 &&
+      collections.every(
+        (item) =>
+          item === "Luxury"
+      )
+    ) {
+      return "Luxury";
+    }
+
+    return "All";
+  }, [normalizedCartItems]);
+
+  /*
+   * ----------------------------------------------------------
+   * FRONTEND DISPLAY SHIPPING
+   * ----------------------------------------------------------
+   *
+   * Backend remains the final authority.
+   */
+
+  const FREE_SHIPPING_THRESHOLD =
+    2000;
+
+  const DEFAULT_SHIPPING_FEE = 100;
+
+  const shipping = useMemo(() => {
+    if (subtotal <= 0) {
+      return 0;
+    }
+
+    if (
+      subtotal >=
+      FREE_SHIPPING_THRESHOLD
+    ) {
+      return 0;
+    }
+
+    return DEFAULT_SHIPPING_FEE;
+  }, [subtotal]);
+
+  /*
+   * ----------------------------------------------------------
+   * DISCOUNT
+   * ----------------------------------------------------------
+   */
+
+  const discount =
+    Number(
+      appliedCoupon?.discount || 0
+    ) || 0;
+
+  /*
+   * ----------------------------------------------------------
+   * TAX DISPLAY
+   * ----------------------------------------------------------
+   */
+
+  const estimatedTax = useMemo(() => {
+    const taxableAmount =
+      Math.max(
+        0,
+        subtotal - discount
+      );
+
+    return Number(
+      (
+        taxableAmount * 0.18
+      ).toFixed(2)
+    );
+  }, [subtotal, discount]);
+
+  /*
+   * ----------------------------------------------------------
+   * DISPLAY TOTAL
+   * ----------------------------------------------------------
+   */
+
+  const estimatedTotal =
+    useMemo(() => {
+      return Math.max(
+        0,
+        subtotal +
+          shipping +
+          estimatedTax -
+          discount
+      );
+    }, [
+      subtotal,
+      shipping,
+      estimatedTax,
+      discount,
+    ]);
+
+  /*
+   * ----------------------------------------------------------
+   * ADDRESS CHANGE
+   * ----------------------------------------------------------
+   */
+
+  const handleAddressChange = (
+    event
+  ) => {
     const {
       name,
       value,
     } = event.target;
 
-    setForm((previous) => ({
-      ...previous,
-      [name]: value,
-    }));
+    setAddress(
+      (previous) => ({
+        ...previous,
+        [name]: value,
+      })
+    );
   };
 
-  // ==========================================
-  // TOTALS
-  // ==========================================
+  /*
+   * ----------------------------------------------------------
+   * RAZORPAY SCRIPT
+   * ----------------------------------------------------------
+   */
 
-  const subtotal = useMemo(() => {
-    return checkoutItems.reduce(
-      (total, item) => {
-        const product =
-          item.product;
+  const loadRazorpay = () => {
+    return new Promise(
+      (resolve) => {
+        if (window.Razorpay) {
+          resolve(true);
+          return;
+        }
 
-        const price =
-          product.salePrice != null
-            ? Number(
-                product.salePrice
-              )
-            : Number(
-                product.price || 0
-              );
+        const existingScript =
+          document.querySelector(
+            `script[src="${RAZORPAY_SCRIPT}"]`
+          );
 
-        return (
-          total +
-          price *
-            Number(
-              item.quantity || 0
-            )
+        if (existingScript) {
+          existingScript.onload =
+            () => resolve(true);
+
+          existingScript.onerror =
+            () => resolve(false);
+
+          return;
+        }
+
+        const script =
+          document.createElement(
+            "script"
+          );
+
+        script.src =
+          RAZORPAY_SCRIPT;
+
+        script.async = true;
+
+        script.onload = () =>
+          resolve(true);
+
+        script.onerror = () =>
+          resolve(false);
+
+        document.body.appendChild(
+          script
         );
-      },
-      0
+      }
     );
-  }, [checkoutItems]);
+  };
 
-  const shippingFee =
-    subtotal >= 2000
-      ? 0
-      : subtotal > 0
-        ? 99
-        : 0;
+  useEffect(() => {
+    loadRazorpay();
+  }, []);
 
-  const total =
-    subtotal + shippingFee;
+  /*
+   * ----------------------------------------------------------
+   * VALIDATE CHECKOUT
+   * ----------------------------------------------------------
+   */
 
-  // ==========================================
-  // EMPTY CART
-  // ==========================================
-
-  if (checkoutItems.length === 0) {
-    return (
-      <main className="min-h-[70vh] flex flex-col items-center justify-center px-6">
-        <h1 className="text-4xl font-black">
-          YOUR CART IS EMPTY
-        </h1>
-
-        <p className="text-gray-500 mt-4">
-          Add some FITFORGE products
-          before checkout.
-        </p>
-
-        <Link
-          to="/shop"
-          className="mt-8 bg-black text-white px-8 py-4 font-bold"
-        >
-          SHOP NOW
-        </Link>
-      </main>
-    );
-  }
-
-  // ==========================================
-  // CREATE ORDER
-  // ==========================================
-
-  const handleSubmit = async (
-    event
-  ) => {
-    event.preventDefault();
-
+  const validateCheckout = () => {
     if (
-      !form.fullName ||
-      !form.phone ||
-      !form.addressLine ||
-      !form.city ||
-      !form.state ||
-      !form.pincode
+      normalizedCartItems.length ===
+      0
     ) {
       toast.error(
-        "Please fill all address fields."
+        "Your cart is empty."
+      );
+
+      return false;
+    }
+
+    if (
+      !address.fullName.trim()
+    ) {
+      toast.error(
+        "Please enter your full name."
+      );
+
+      return false;
+    }
+
+    if (
+      !address.phone.trim()
+    ) {
+      toast.error(
+        "Please enter your phone number."
+      );
+
+      return false;
+    }
+
+    if (
+      !/^[6-9]\d{9}$/.test(
+        address.phone.trim()
+      )
+    ) {
+      toast.error(
+        "Please enter a valid 10-digit Indian mobile number."
+      );
+
+      return false;
+    }
+
+    if (
+      !address.addressLine.trim()
+    ) {
+      toast.error(
+        "Please enter your complete address."
+      );
+
+      return false;
+    }
+
+    if (!address.city.trim()) {
+      toast.error(
+        "Please enter your city."
+      );
+
+      return false;
+    }
+
+    if (!address.state.trim()) {
+      toast.error(
+        "Please enter your state."
+      );
+
+      return false;
+    }
+
+    if (
+      !address.pincode.trim()
+    ) {
+      toast.error(
+        "Please enter your PIN code."
+      );
+
+      return false;
+    }
+
+    if (
+      !/^\d{6}$/.test(
+        address.pincode.trim()
+      )
+    ) {
+      toast.error(
+        "Please enter a valid 6-digit PIN code."
+      );
+
+      return false;
+    }
+
+    return true;
+  };
+
+  /*
+   * ----------------------------------------------------------
+   * APPLY COUPON
+   * ----------------------------------------------------------
+   */
+
+  const applyCoupon = async () => {
+    const code =
+      couponCode.trim();
+
+    if (!code) {
+      toast.error(
+        "Enter a coupon code."
+      );
+
+      return;
+    }
+
+    if (subtotal <= 0) {
+      toast.error(
+        "Your cart is empty."
       );
 
       return;
     }
 
     try {
-      setLoading(true);
-
-      // --------------------------------------
-      // IMPORTANT:
-      // Backend recalculates price.
-      // Frontend total is only for display.
-      // --------------------------------------
+      setLoadingCoupon(true);
 
       const response =
-        await api.post("/orders", {
-          items: checkoutItems.map(
-            (item) => ({
-              product:
-                item.product._id,
+        await api.post(
+          "/coupons/validate",
+          {
+            code,
+            subtotal,
+            collection,
+          }
+        );
 
-              quantity:
-                Number(
-                  item.quantity || 1
-                ),
-
-              size:
-                item.size || "",
-
-              color:
-                item.color || "",
-            })
-          ),
-
-          shippingAddress: {
-            fullName:
-              form.fullName,
-
-            phone:
-              form.phone,
-
-            addressLine:
-              form.addressLine,
-
-            city:
-              form.city,
-
-            state:
-              form.state,
-
-            pincode:
-              form.pincode,
-          },
-
-          paymentMethod,
-        });
-
-      if (!response.data?.success) {
+      if (
+        !response.data?.success
+      ) {
         throw new Error(
-          response.data?.message ||
-            "Unable to create order."
+          response.data
+            ?.message ||
+            "Invalid coupon."
         );
       }
 
-      const order =
-        response.data.order;
+      setAppliedCoupon({
+        ...response.data.coupon,
+        discount:
+          Number(
+            response.data.discount
+          ) || 0,
+      });
 
-      // ======================================
-      // COD
-      // ======================================
+      toast.success(
+        response.data.message ||
+          "Coupon applied successfully."
+      );
+    } catch (err) {
+      console.error(
+        "Coupon validation error:",
+        err
+      );
+
+      setAppliedCoupon(null);
+
+      toast.error(
+        err.response?.data
+          ?.message ||
+          err.message ||
+          "Unable to apply coupon."
+      );
+    } finally {
+      setLoadingCoupon(false);
+    }
+  };
+
+  /*
+   * ----------------------------------------------------------
+   * REMOVE COUPON
+   * ----------------------------------------------------------
+   */
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+
+    toast.success(
+      "Coupon removed."
+    );
+  };
+
+  /*
+   * ----------------------------------------------------------
+   * CREATE ORDER
+   * ----------------------------------------------------------
+   *
+   * IMPORTANT:
+   *
+   * Your Order model/controller expects:
+   *
+   * shippingAddress:
+   * {
+   *   fullName,
+   *   phone,
+   *   addressLine,
+   *   city,
+   *   state,
+   *   pincode
+   * }
+   */
+
+
+const createOrder = async () => {
+  if (!validateCheckout()) {
+    return null;
+  }
+
+  try {
+    setPlacingOrder(true);
+    setError("");
+
+    /*
+     * Convert the current cart into the structure
+     * expected by the backend.
+     *
+     * IMPORTANT:
+     * Do not send frontend prices as the trusted price.
+     * The backend should fetch the products from MongoDB
+     * and calculate the final price itself.
+     */
+
+    const items = normalizedCartItems
+      .map((item) => {
+        const product =
+          item.product || item;
+
+        const productId =
+          product?._id ||
+          item?.productId ||
+          item?.product?._id;
+
+        if (!productId) {
+          return null;
+        }
+
+        const quantity =
+          Number(item.quantity || 1);
+
+        return {
+          product: productId,
+
+          quantity:
+            quantity > 0 ? quantity : 1,
+
+          size:
+            item.size || "",
+
+          color:
+            typeof item.color === "string"
+              ? item.color
+              : item.color?.name || "",
+        };
+      })
+      .filter(Boolean);
+
+    /*
+     * Safety check.
+     */
+
+    if (items.length === 0) {
+      toast.error(
+        "Your cart does not contain any valid products."
+      );
+
+      console.error(
+        "Invalid cart items:",
+        normalizedCartItems
+      );
+
+      return null;
+    }
+
+    /*
+     * This is the exact payload sent to the backend.
+     */
+
+    const orderData = {
+      items,
+
+      shippingAddress: {
+        fullName:
+          address.fullName.trim(),
+
+        phone:
+          address.phone.trim(),
+
+        addressLine:
+          address.addressLine.trim(),
+
+        city:
+          address.city.trim(),
+
+        state:
+          address.state.trim(),
+
+        pincode:
+          address.pincode.trim(),
+
+        country: "India",
+      },
+
+      paymentMethod,
+
+      couponCode:
+        appliedCoupon?.code || undefined,
+    };
+
+    console.log(
+      "Creating FITFORGE order:",
+      orderData
+    );
+
+    const response =
+      await api.post(
+        "/orders",
+        orderData
+      );
+
+    console.log(
+      "Create order response:",
+      response.data
+    );
+
+    if (!response.data?.success) {
+      throw new Error(
+        response.data?.message ||
+          "Unable to create order."
+      );
+    }
+
+    const createdOrder =
+      response.data.order ||
+      response.data.data;
+
+    if (!createdOrder?._id) {
+      throw new Error(
+        "Order was created but order ID was not returned."
+      );
+    }
+
+    return createdOrder;
+  } catch (err) {
+    console.error(
+      "========== CREATE ORDER ERROR =========="
+    );
+
+    console.error(
+      "Status:",
+      err.response?.status
+    );
+
+    console.error(
+      "Backend response:",
+      err.response?.data
+    );
+
+    console.error(
+      "Backend message:",
+      err.response?.data?.message
+    );
+
+    console.error(
+      "Full error:",
+      err
+    );
+
+    console.error(
+      "========================================"
+    );
+
+    const message =
+      err.response?.data?.message ||
+      err.response?.data?.error ||
+      err.message ||
+      "Unable to create order.";
+
+    setError(message);
+
+    toast.error(message);
+
+    return null;
+  } finally {
+    setPlacingOrder(false);
+  }
+};
+
+
+
+  /*
+   * ----------------------------------------------------------
+   * RAZORPAY PAYMENT
+   * ----------------------------------------------------------
+   */
+
+  const startRazorpayPayment =
+    async (createdOrder) => {
+      try {
+        const loaded =
+          window.Razorpay ||
+          (await loadRazorpay());
+
+        if (
+          !loaded ||
+          !window.Razorpay
+        ) {
+          throw new Error(
+            "Razorpay failed to load. Please refresh the page and try again."
+          );
+        }
+
+        if (
+          !createdOrder?._id
+        ) {
+          throw new Error(
+            "Order ID is missing."
+          );
+        }
+
+        /*
+         * Backend creates Razorpay order.
+         */
+
+        const razorpayResponse =
+          await api.post(
+            "/payments/razorpay/order",
+            {
+              orderId:
+                createdOrder._id,
+            }
+          );
+
+        console.log(
+          "Razorpay backend response:",
+          razorpayResponse.data
+        );
+
+        if (
+          !razorpayResponse
+            .data?.success
+        ) {
+          throw new Error(
+            razorpayResponse
+              .data?.message ||
+              "Unable to create Razorpay order."
+          );
+        }
+
+        /*
+         * IMPORTANT:
+         *
+         * Backend returns:
+         *
+         * {
+         *   success: true,
+         *   razorpayOrder: {
+         *      id,
+         *      amount,
+         *      currency
+         *   },
+         *   keyId
+         * }
+         */
+
+        const razorpayOrder =
+          razorpayResponse
+            .data?.razorpayOrder;
+
+        const razorpayKey =
+          razorpayResponse
+            .data?.keyId;
+
+        const razorpayOrderId =
+          razorpayOrder?.id;
+
+        if (!razorpayKey) {
+          throw new Error(
+            "Razorpay key was not returned by the server."
+          );
+        }
+
+        if (
+          !razorpayOrderId
+        ) {
+          throw new Error(
+            "Razorpay order ID was not returned by the server."
+          );
+        }
+
+        const options = {
+          key: razorpayKey,
+
+          amount:
+            razorpayOrder.amount,
+
+          currency:
+            razorpayOrder.currency ||
+            "INR",
+
+          name: "FITFORGE",
+
+          description:
+            "FITFORGE Gym Wear Order",
+
+          order_id:
+            razorpayOrderId,
+
+          prefill: {
+            name:
+              address.fullName,
+
+            contact:
+              address.phone,
+          },
+
+          notes: {
+            fitforgeOrderId:
+              String(
+                createdOrder._id
+              ),
+          },
+
+          theme: {
+            color: "#000000",
+          },
+
+          handler:
+            async (
+              paymentResponse
+            ) => {
+              try {
+                toast.loading(
+                  "Verifying payment...",
+                  {
+                    id: "payment-verification",
+                  }
+                );
+
+                /*
+                 * Backend expects snake_case
+                 * Razorpay fields.
+                 */
+
+                const verifyResponse =
+                  await api.post(
+                    "/payments/razorpay/verify",
+                    {
+                      orderId:
+                        createdOrder._id,
+
+                      razorpay_order_id:
+                        paymentResponse.razorpay_order_id,
+
+                      razorpay_payment_id:
+                        paymentResponse.razorpay_payment_id,
+
+                      razorpay_signature:
+                        paymentResponse.razorpay_signature,
+                    }
+                  );
+
+                toast.dismiss(
+                  "payment-verification"
+                );
+
+                console.log(
+                  "Payment verification response:",
+                  verifyResponse.data
+                );
+
+                if (
+                  !verifyResponse
+                    .data?.success
+                ) {
+                  throw new Error(
+                    verifyResponse
+                      .data?.message ||
+                      "Payment verification failed."
+                  );
+                }
+
+                toast.success(
+                  "Payment successful!"
+                );
+
+                try {
+                  await fetchCart?.();
+                } catch (
+                  cartError
+                ) {
+                  console.warn(
+                    "Cart refresh failed:",
+                    cartError
+                  );
+                }
+
+                try {
+                  await clearCart?.();
+                } catch (
+                  clearError
+                ) {
+                  console.warn(
+                    "Cart clear failed:",
+                    clearError
+                  );
+                }
+
+                navigate(
+                  `/orders/${createdOrder._id}`,
+                  {
+                    replace: true,
+                  }
+                );
+              } catch (err) {
+                toast.dismiss(
+                  "payment-verification"
+                );
+
+                console.error(
+                  "Razorpay verification error:",
+                  err
+                );
+
+                toast.error(
+                  err.response
+                    ?.data?.message ||
+                    err.message ||
+                    "Payment verification failed."
+                );
+              }
+            },
+
+          modal: {
+            ondismiss: () => {
+              toast.info(
+                "Payment window closed."
+              );
+            },
+          },
+        };
+
+        const razorpay =
+          new window.Razorpay(
+            options
+          );
+
+        razorpay.on(
+          "payment.failed",
+          (response) => {
+            console.error(
+              "Razorpay payment failed:",
+              response
+            );
+
+            toast.error(
+              response.error
+                ?.description ||
+                "Payment failed. Please try again."
+            );
+          }
+        );
+
+        razorpay.open();
+      } catch (err) {
+        console.error(
+          "Razorpay payment error:",
+          err
+        );
+
+        toast.error(
+          err.response?.data
+            ?.message ||
+            err.message ||
+            "Unable to start Razorpay payment."
+        );
+      }
+    };
+
+  /*
+   * ----------------------------------------------------------
+   * PLACE ORDER
+   * ----------------------------------------------------------
+   */
+
+  const handlePlaceOrder =
+    async () => {
+      if (placingOrder) {
+        return;
+      }
+
+      if (!validateCheckout()) {
+        return;
+      }
+
+      setError("");
+
+      const createdOrder =
+        await createOrder();
+
+      if (!createdOrder) {
+        return;
+      }
+
+      /*
+       * Razorpay
+       */
 
       if (
-        paymentMethod === "COD"
+        paymentMethod ===
+        "RAZORPAY"
       ) {
-        clearCart();
-
-        localStorage.removeItem(
-          "fitforge-cart"
-        );
-
-        toast.success(
-          "Order placed successfully!"
-        );
-
-        navigate(
-          `/orders/${order._id}`
+        await startRazorpayPayment(
+          createdOrder
         );
 
         return;
       }
 
-      // ======================================
-      // RAZORPAY
-      // ======================================
+      /*
+       * COD
+       */
 
-      const razorpayResponse =
-        await api.post(
-          "/payments/razorpay/order",
+      try {
+        toast.success(
+          "Order placed successfully."
+        );
+
+        try {
+          await fetchCart?.();
+        } catch (
+          cartError
+        ) {
+          console.warn(
+            "Cart refresh failed:",
+            cartError
+          );
+        }
+
+        try {
+          await clearCart?.();
+        } catch (
+          clearError
+        ) {
+          console.warn(
+            "Cart clear failed:",
+            clearError
+          );
+        }
+
+        navigate(
+          `/orders/${createdOrder._id}`,
           {
-            orderId:
-              order._id,
+            replace: true,
           }
         );
+      } catch (err) {
+        console.error(
+          "COD checkout error:",
+          err
+        );
 
-      if (
-        !razorpayResponse.data
-          ?.success
-      ) {
-        throw new Error(
-          razorpayResponse.data
-            ?.message ||
-            "Unable to start payment."
+        toast.error(
+          "Order was created but navigation failed."
         );
       }
+    };
 
-      const {
-        razorpayOrder,
-        keyId,
-      } =
-        razorpayResponse.data;
+  /*
+   * ----------------------------------------------------------
+   * EMPTY CART
+   * ----------------------------------------------------------
+   */
 
-      if (
-        !window.Razorpay
-      ) {
-        throw new Error(
-          "Razorpay checkout is not loaded."
-        );
-      }
+  if (
+    !placingOrder &&
+    normalizedCartItems.length ===
+      0
+  ) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="mx-auto flex min-h-[70vh] max-w-5xl flex-col items-center justify-center px-6 text-center">
+          <Package
+            size={52}
+            strokeWidth={1.5}
+          />
 
-      const options = {
-        key: keyId,
+          <h1 className="mt-6 text-3xl font-black uppercase tracking-tight">
+            Your cart is empty
+          </h1>
 
-        amount:
-          razorpayOrder.amount,
+          <p className="mt-3 max-w-md text-sm text-gray-500">
+            Add some FITFORGE gym wear
+            to your cart before checking
+            out.
+          </p>
 
-        currency:
-          razorpayOrder.currency,
+          <Link
+            to="/shop"
+            className="mt-8 inline-flex items-center gap-2 bg-black px-7 py-4 text-sm font-bold uppercase tracking-wider text-white transition hover:bg-gray-800"
+          >
+            Continue Shopping
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
-        name: "FITFORGE",
-
-        description:
-          "FITFORGE Gym Wear Order",
-
-        order_id:
-          razorpayOrder.id,
-
-        prefill: {
-          name:
-            form.fullName,
-
-          contact:
-            form.phone,
-
-          email:
-            user?.email || "",
-        },
-
-        theme: {
-          color: "#000000",
-        },
-
-        handler:
-          async function (
-            paymentResponse
-          ) {
-            try {
-              setLoading(true);
-
-              const verifyResponse =
-                await api.post(
-                  "/payments/razorpay/verify",
-                  {
-                    orderId:
-                      order._id,
-
-                    razorpay_order_id:
-                      paymentResponse.razorpay_order_id,
-
-                    razorpay_payment_id:
-                      paymentResponse.razorpay_payment_id,
-
-                    razorpay_signature:
-                      paymentResponse.razorpay_signature,
-                  }
-                );
-
-              if (
-                !verifyResponse
-                  .data
-                  ?.success
-              ) {
-                throw new Error(
-                  verifyResponse
-                    .data
-                    ?.message ||
-                    "Payment verification failed."
-                );
-              }
-
-              clearCart();
-
-              localStorage.removeItem(
-                "fitforge-cart"
-              );
-
-              toast.success(
-                "Payment successful!"
-              );
-
-              navigate(
-                `/orders/${order._id}`
-              );
-            } catch (error) {
-              console.error(
-                "Payment verification error:",
-                error
-              );
-
-              toast.error(
-                error.message ||
-                  "Payment verification failed."
-              );
-            } finally {
-              setLoading(false);
-            }
-          },
-
-        modal: {
-          ondismiss:
-            function () {
-              toast.error(
-                "Payment cancelled."
-              );
-
-              setLoading(false);
-            },
-        },
-      };
-
-      const razorpay =
-        new window.Razorpay(
-          options
-        );
-
-      razorpay.on(
-        "payment.failed",
-        function (response) {
-          console.error(
-            "Razorpay payment failed:",
-            response
-          );
-
-          toast.error(
-            response.error
-              ?.description ||
-              "Payment failed."
-          );
-
-          setLoading(false);
-        }
-      );
-
-      razorpay.open();
-    } catch (error) {
-      console.error(
-        "Checkout error:",
-        error
-      );
-
-      toast.error(
-        error.response?.data
-          ?.message ||
-          error.message ||
-          "Checkout failed."
-      );
-
-      setLoading(false);
-    }
-  };
-
-  // ==========================================
-  // UI
-  // ==========================================
+  /*
+   * ----------------------------------------------------------
+   * UI
+   * ----------------------------------------------------------
+   */
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-16">
-      <div className="mb-10">
-        <Link
-          to="/cart"
-          className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-black"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Cart
-        </Link>
+    <div className="min-h-screen bg-white">
+      {/* Header */}
 
-        <p className="text-sm tracking-[0.3em] uppercase text-gray-500 mt-8">
-          FITFORGE
-        </p>
+      <div className="border-b border-gray-200">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
+          <Link
+            to="/cart"
+            className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide"
+          >
+            <ArrowLeft size={18} />
+            Back to Cart
+          </Link>
 
-        <h1 className="text-5xl font-black mt-3">
-          CHECKOUT
-        </h1>
+          <div className="text-xl font-black tracking-[0.2em]">
+            FITFORGE
+          </div>
+
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase text-gray-500">
+            <ShieldCheck size={16} />
+            Secure Checkout
+          </div>
+        </div>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="grid lg:grid-cols-3 gap-12"
-      >
-        {/* ================================= */}
-        {/* ADDRESS */}
-        {/* ================================= */}
+      {/* Main */}
 
-        <div className="lg:col-span-2 space-y-8">
-          <section className="border p-8">
-            <div className="flex items-center gap-3 mb-8">
-              <MapPin className="w-5 h-5" />
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+        <div className="grid gap-8 lg:grid-cols-[1fr_420px]">
+          {/* LEFT */}
 
-              <h2 className="text-2xl font-black">
-                SHIPPING ADDRESS
-              </h2>
-            </div>
+          <div className="space-y-8">
+            {/* Error */}
 
-            <div className="grid md:grid-cols-2 gap-5">
-              <input
-                name="fullName"
-                value={
-                  form.fullName
-                }
-                onChange={
-                  handleChange
-                }
-                placeholder="Full Name"
-                className="input"
-              />
-
-              <input
-                name="phone"
-                value={
-                  form.phone
-                }
-                onChange={
-                  handleChange
-                }
-                placeholder="Phone Number"
-                className="input"
-              />
-
-              <input
-                name="addressLine"
-                value={
-                  form.addressLine
-                }
-                onChange={
-                  handleChange
-                }
-                placeholder="Address"
-                className="input md:col-span-2"
-              />
-
-              <input
-                name="city"
-                value={
-                  form.city
-                }
-                onChange={
-                  handleChange
-                }
-                placeholder="City"
-                className="input"
-              />
-
-              <input
-                name="state"
-                value={
-                  form.state
-                }
-                onChange={
-                  handleChange
-                }
-                placeholder="State"
-                className="input"
-              />
-
-              <input
-                name="pincode"
-                value={
-                  form.pincode
-                }
-                onChange={
-                  handleChange
-                }
-                placeholder="PIN Code"
-                className="input"
-              />
-            </div>
-          </section>
-
-          {/* ================================= */}
-          {/* PAYMENT */}
-          {/* ================================= */}
-
-          <section className="border p-8">
-            <div className="flex items-center gap-3 mb-8">
-              <CreditCard className="w-5 h-5" />
-
-              <h2 className="text-2xl font-black">
-                PAYMENT METHOD
-              </h2>
-            </div>
-
-            <div className="space-y-4">
-              <label className="border p-5 flex items-center gap-4 cursor-pointer">
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="RAZORPAY"
-                  checked={
-                    paymentMethod ===
-                    "RAZORPAY"
-                  }
-                  onChange={(event) =>
-                    setPaymentMethod(
-                      event.target.value
-                    )
-                  }
-                />
+            {error && (
+              <div className="flex items-start gap-3 border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <X size={18} />
 
                 <div>
                   <p className="font-bold">
-                    Razorpay
+                    Checkout Error
                   </p>
 
-                  <p className="text-sm text-gray-500">
-                    UPI, Cards, Net Banking
-                    and more
+                  <p className="mt-1">
+                    {error}
                   </p>
                 </div>
-              </label>
+              </div>
+            )}
 
-              <label className="border p-5 flex items-center gap-4 cursor-pointer">
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="COD"
-                  checked={
-                    paymentMethod ===
-                    "COD"
-                  }
-                  onChange={(event) =>
-                    setPaymentMethod(
-                      event.target.value
-                    )
-                  }
-                />
+            {/* DELIVERY LOCATION */}
+
+            <section className="border border-gray-200">
+              <div className="border-b border-gray-200 px-5 py-5 sm:px-6">
+                <div className="flex items-center gap-3">
+                  <MapPin size={20} />
+
+                  <div>
+                    <h2 className="text-lg font-black uppercase">
+                      Delivery Location
+                    </h2>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      Enter the complete location
+                      where your FITFORGE order
+                      should be delivered.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-5 p-5 sm:grid-cols-2 sm:p-6">
+                {/* NAME */}
 
                 <div>
-                  <p className="font-bold">
-                    Cash on Delivery
-                  </p>
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
+                    Full Name *
+                  </label>
 
-                  <p className="text-sm text-gray-500">
-                    Pay when your order
-                    arrives
-                  </p>
+                  <input
+                    type="text"
+                    name="fullName"
+                    value={
+                      address.fullName
+                    }
+                    onChange={
+                      handleAddressChange
+                    }
+                    placeholder="Full name"
+                    autoComplete="name"
+                    className="w-full border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
+                  />
                 </div>
-              </label>
-            </div>
-          </section>
-        </div>
 
-        {/* ================================= */}
-        {/* ORDER SUMMARY */}
-        {/* ================================= */}
+                {/* PHONE */}
 
-        <aside className="border p-8 h-fit">
-          <h2 className="text-2xl font-black">
-            ORDER SUMMARY
-          </h2>
+                <div>
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
+                    Phone *
+                  </label>
 
-          <div className="mt-8 space-y-5">
-            {checkoutItems.map(
-              (item, index) => {
-                const product =
-                  item.product;
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={
+                      address.phone
+                    }
+                    onChange={
+                      handleAddressChange
+                    }
+                    placeholder="10-digit mobile number"
+                    maxLength={10}
+                    autoComplete="tel"
+                    className="w-full border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
+                  />
+                </div>
 
-                const price =
-                  product.salePrice !=
-                  null
-                    ? Number(
-                        product.salePrice
-                      )
-                    : Number(
-                        product.price ||
-                          0
-                      );
+                {/* COMPLETE ADDRESS */}
 
-                return (
-                  <div
-                    key={`${product._id}-${index}`}
-                    className="flex gap-4"
-                  >
-                    <img
-                      src={
-                        product.images?.[0]
-                      }
-                      alt={
-                        product.name
-                      }
-                      className="w-20 h-24 object-cover bg-gray-100"
-                    />
+                <div className="sm:col-span-2">
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
+                    Complete Address *
+                  </label>
 
-                    <div className="flex-1">
-                      <p className="font-bold text-sm">
-                        {product.name}
-                      </p>
+                  <textarea
+                    name="addressLine"
+                    value={
+                      address.addressLine
+                    }
+                    onChange={
+                      handleAddressChange
+                    }
+                    placeholder="House/Flat number, building, street, area, landmark"
+                    rows={4}
+                    autoComplete="street-address"
+                    className="w-full resize-none border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
+                  />
+                </div>
 
-                      <p className="text-sm text-gray-500">
-                        Qty:{" "}
+                {/* CITY */}
+
+                <div>
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
+                    City *
+                  </label>
+
+                  <input
+                    type="text"
+                    name="city"
+                    value={
+                      address.city
+                    }
+                    onChange={
+                      handleAddressChange
+                    }
+                    placeholder="City"
+                    autoComplete="address-level2"
+                    className="w-full border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
+                  />
+                </div>
+
+                {/* STATE */}
+
+                <div>
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
+                    State *
+                  </label>
+
+                  <input
+                    type="text"
+                    name="state"
+                    value={
+                      address.state
+                    }
+                    onChange={
+                      handleAddressChange
+                    }
+                    placeholder="State"
+                    autoComplete="address-level1"
+                    className="w-full border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
+                  />
+                </div>
+
+                {/* PINCODE */}
+
+                <div>
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
+                    PIN Code *
+                  </label>
+
+                  <input
+                    type="text"
+                    name="pincode"
+                    value={
+                      address.pincode
+                    }
+                    onChange={
+                      handleAddressChange
+                    }
+                    placeholder="6-digit PIN"
+                    maxLength={6}
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                    className="w-full border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-black"
+                  />
+                </div>
+
+                {/* COUNTRY */}
+
+                <div>
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide">
+                    Country
+                  </label>
+
+                  <input
+                    type="text"
+                    name="country"
+                    value="India"
+                    disabled
+                    className="w-full border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500 outline-none"
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* COUPON */}
+
+            <section className="border border-gray-200">
+              <div className="border-b border-gray-200 px-5 py-5 sm:px-6">
+                <div className="flex items-center gap-3">
+                  <Tag size={20} />
+
+                  <div>
+                    <h2 className="text-lg font-black uppercase">
+                      Coupon
+                    </h2>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      Apply an available FITFORGE
+                      discount code.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 sm:p-6">
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between border border-green-200 bg-green-50 p-4">
+                    <div>
+                      <p className="text-sm font-black uppercase text-green-800">
                         {
-                          item.quantity
+                          appliedCoupon.code
                         }
                       </p>
 
-                      {item.size && (
-                        <p className="text-xs text-gray-500">
-                          Size:{" "}
-                          {item.size}
-                        </p>
-                      )}
-
-                      {item.color && (
-                        <p className="text-xs text-gray-500">
-                          Color:{" "}
-                          {item.color}
-                        </p>
-                      )}
-
-                      <p className="font-medium mt-2">
-                        ₹
-                        {(
-                          price *
-                          Number(
-                            item.quantity ||
-                              1
-                          )
-                        ).toLocaleString(
-                          "en-IN"
+                      <p className="mt-1 text-xs text-green-700">
+                        Discount applied: ₹
+                        {discount.toFixed(
+                          2
                         )}
                       </p>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={
+                        removeCoupon
+                      }
+                      className="text-xs font-bold uppercase underline"
+                    >
+                      Remove
+                    </button>
                   </div>
-                );
-              }
-            )}
-          </div>
+                ) : (
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="text"
+                      value={
+                        couponCode
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setCouponCode(
+                          event.target.value.toUpperCase()
+                        )
+                      }
+                      placeholder="ENTER COUPON CODE"
+                      className="min-w-0 flex-1 border border-gray-300 px-4 py-3 text-sm font-semibold uppercase outline-none focus:border-black"
+                    />
 
-          <div className="border-t mt-8 pt-6 space-y-4">
-            <div className="flex justify-between">
-              <span>
-                Subtotal
-              </span>
-
-              <span>
-                ₹
-                {subtotal.toLocaleString(
-                  "en-IN"
+                    <button
+                      type="button"
+                      onClick={
+                        applyCoupon
+                      }
+                      disabled={
+                        loadingCoupon
+                      }
+                      className="bg-black px-7 py-3 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {loadingCoupon
+                        ? "Checking..."
+                        : "Apply"}
+                    </button>
+                  </div>
                 )}
-              </span>
+              </div>
+            </section>
+
+            {/* PAYMENT */}
+
+            <section className="border border-gray-200">
+              <div className="border-b border-gray-200 px-5 py-5 sm:px-6">
+                <div className="flex items-center gap-3">
+                  <CreditCard size={20} />
+
+                  <div>
+                    <h2 className="text-lg font-black uppercase">
+                      Payment Method
+                    </h2>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      Choose how you want to pay.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 p-5 sm:p-6">
+                {/* RAZORPAY */}
+
+                <label
+                  className={`flex cursor-pointer items-start gap-4 border p-4 transition ${
+                    paymentMethod ===
+                    "RAZORPAY"
+                      ? "border-black bg-gray-50"
+                      : "border-gray-200"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="RAZORPAY"
+                    checked={
+                      paymentMethod ===
+                      "RAZORPAY"
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setPaymentMethod(
+                        event.target.value
+                      )
+                    }
+                    className="mt-1"
+                  />
+
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <CreditCard
+                        size={18}
+                      />
+
+                      <p className="text-sm font-black uppercase">
+                        Razorpay
+                      </p>
+                    </div>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      UPI, cards, net banking and
+                      supported payment methods.
+                    </p>
+                  </div>
+
+                  <ShieldCheck
+                    size={18}
+                    className="text-gray-500"
+                  />
+                </label>
+
+                {/* COD */}
+
+                <label
+                  className={`flex cursor-pointer items-start gap-4 border p-4 transition ${
+                    paymentMethod ===
+                    "COD"
+                      ? "border-black bg-gray-50"
+                      : "border-gray-200"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="COD"
+                    checked={
+                      paymentMethod ===
+                      "COD"
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setPaymentMethod(
+                        event.target.value
+                      )
+                    }
+                    className="mt-1"
+                  />
+
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Package
+                        size={18}
+                      />
+
+                      <p className="text-sm font-black uppercase">
+                        Cash on Delivery
+                      </p>
+                    </div>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      Pay when your order is
+                      delivered.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </section>
+
+            {/* TRUST */}
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="border border-gray-200 p-5">
+                <ShieldCheck size={22} />
+
+                <p className="mt-3 text-xs font-black uppercase">
+                  Secure Payment
+                </p>
+
+                <p className="mt-1 text-xs text-gray-500">
+                  Payments are securely processed.
+                </p>
+              </div>
+
+              <div className="border border-gray-200 p-5">
+                <Truck size={22} />
+
+                <p className="mt-3 text-xs font-black uppercase">
+                  Fast Delivery
+                </p>
+
+                <p className="mt-1 text-xs text-gray-500">
+                  Reliable delivery across India.
+                </p>
+              </div>
+
+              <div className="border border-gray-200 p-5">
+                <CheckCircle2 size={22} />
+
+                <p className="mt-3 text-xs font-black uppercase">
+                  Quality Assured
+                </p>
+
+                <p className="mt-1 text-xs text-gray-500">
+                  Authentic FITFORGE products.
+                </p>
+              </div>
             </div>
+          </div>
 
-            <div className="flex justify-between">
-              <span>
-                Shipping
-              </span>
+          {/* RIGHT */}
 
-              <span>
-                {shippingFee === 0
-                  ? "FREE"
-                  : `₹${shippingFee}`}
-              </span>
-            </div>
+          <aside className="lg:sticky lg:top-6 lg:self-start">
+            <div className="border border-gray-200">
+              <div className="border-b border-gray-200 px-5 py-5">
+                <h2 className="text-lg font-black uppercase">
+                  Order Summary
+                </h2>
+              </div>
 
-            <div className="border-t pt-5 flex justify-between text-xl font-black">
-              <span>
-                Total
-              </span>
+              <div className="divide-y divide-gray-100">
+                {normalizedCartItems.map(
+                  (
+                    item,
+                    index
+                  ) => {
+                    const product =
+                      item.product ||
+                      item;
 
-              <span>
-                ₹
-                {total.toLocaleString(
-                  "en-IN"
+                    const name =
+                      product.name ||
+                      "FITFORGE Product";
+
+                    const image =
+                      item.thumbnail ||
+                      product.thumbnail ||
+                      product.images?.[0];
+
+                    const price =
+                      Number(
+                        item.price ??
+                          item.salePrice ??
+                          product.salePrice ??
+                          product.price ??
+                          0
+                      ) || 0;
+
+                    const quantity =
+                      Number(
+                        item.quantity ??
+                          1
+                      ) || 1;
+
+                    return (
+                      <div
+                        key={
+                          item._id ||
+                          product._id ||
+                          `${name}-${index}`
+                        }
+                        className="flex gap-4 p-5"
+                      >
+                        <div className="h-20 w-16 shrink-0 overflow-hidden bg-gray-100">
+                          {image ? (
+                            <img
+                              src={image}
+                              alt={name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center">
+                              <Package
+                                size={20}
+                                className="text-gray-400"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold uppercase">
+                            {name}
+                          </p>
+
+                          <div className="mt-2 space-y-1 text-xs text-gray-500">
+                            {item.size && (
+                              <p>
+                                Size:{" "}
+                                <span className="font-semibold text-gray-700">
+                                  {
+                                    item.size
+                                  }
+                                </span>
+                              </p>
+                            )}
+
+                            {item.color && (
+                              <p>
+                                Color:{" "}
+                                <span className="font-semibold text-gray-700">
+                                  {typeof item.color ===
+                                  "string"
+                                    ? item.color
+                                    : item.color
+                                        ?.name ||
+                                      ""}
+                                </span>
+                              </p>
+                            )}
+
+                            <p>
+                              Qty:{" "}
+                              <span className="font-semibold text-gray-700">
+                                {
+                                  quantity
+                                }
+                              </span>
+                            </p>
+                          </div>
+
+                          <p className="mt-2 text-sm font-black">
+                            ₹
+                            {(
+                              price *
+                              quantity
+                            ).toFixed(
+                              2
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
                 )}
-              </span>
+              </div>
+
+              {/* TOTALS */}
+
+              <div className="space-y-3 border-t border-gray-200 p-5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">
+                    Subtotal
+                  </span>
+
+                  <span className="font-semibold">
+                    ₹
+                    {subtotal.toFixed(
+                      2
+                    )}
+                  </span>
+                </div>
+
+                {discount > 0 && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">
+                      Discount
+                    </span>
+
+                    <span className="font-semibold text-green-700">
+                      -₹
+                      {discount.toFixed(
+                        2
+                      )}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">
+                    Shipping
+                  </span>
+
+                  <span className="font-semibold">
+                    {shipping ===
+                    0 ? (
+                      <span className="text-green-700">
+                        FREE
+                      </span>
+                    ) : (
+                      `₹${shipping.toFixed(
+                        2
+                      )}`
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">
+                    GST / Tax
+                  </span>
+
+                  <span className="font-semibold">
+                    ₹
+                    {estimatedTax.toFixed(
+                      2
+                    )}
+                  </span>
+                </div>
+
+                <div className="border-t border-gray-200 pt-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-black uppercase">
+                      Total
+                    </span>
+
+                    <span className="text-xl font-black">
+                      ₹
+                      {estimatedTotal.toFixed(
+                        2
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* BUTTON */}
+
+              <div className="border-t border-gray-200 p-5">
+                <button
+                  type="button"
+                  onClick={
+                    handlePlaceOrder
+                  }
+                  disabled={
+                    placingOrder
+                  }
+                  className="flex w-full items-center justify-center gap-3 bg-black px-6 py-4 text-sm font-black uppercase tracking-wider text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {placingOrder ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+
+                      Processing...
+                    </>
+                  ) : paymentMethod ===
+                    "RAZORPAY" ? (
+                    <>
+                      <CreditCard
+                        size={18}
+                      />
+
+                      Pay with Razorpay
+                    </>
+                  ) : (
+                    <>
+                      <Package
+                        size={18}
+                      />
+
+                      Place COD Order
+                    </>
+                  )}
+                </button>
+
+                <p className="mt-4 text-center text-[11px] leading-relaxed text-gray-500">
+                  By placing your order,
+                  you agree to FITFORGE's
+                  terms and conditions.
+                </p>
+              </div>
             </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-8 bg-black text-white py-4 font-bold flex items-center justify-center gap-3 disabled:opacity-50"
-          >
-            {loading
-              ? "PROCESSING..."
-              : paymentMethod ===
-                "RAZORPAY"
-              ? "PAY NOW"
-              : "PLACE ORDER"}
-
-            <ArrowRight className="w-4 h-4" />
-          </button>
-
-          <div className="flex items-center justify-center gap-2 text-xs text-gray-500 mt-5">
-            <Truck className="w-4 h-4" />
-            Free shipping above ₹2,000
-          </div>
-        </aside>
-      </form>
-    </main>
+          </aside>
+        </div>
+      </main>
+    </div>
   );
-}
+};
+
+export default Checkout;
+

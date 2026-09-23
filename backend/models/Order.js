@@ -11,6 +11,7 @@ const orderItemSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
+      trim: true,
     },
 
     image: {
@@ -33,14 +34,18 @@ const orderItemSchema = new mongoose.Schema(
     size: {
       type: String,
       default: "",
+      trim: true,
     },
 
     color: {
       type: String,
       default: "",
+      trim: true,
     },
   },
-  { _id: false }
+  {
+    _id: false,
+  }
 );
 
 const shippingAddressSchema = new mongoose.Schema(
@@ -81,7 +86,9 @@ const shippingAddressSchema = new mongoose.Schema(
       trim: true,
     },
   },
-  { _id: false }
+  {
+    _id: false,
+  }
 );
 
 const orderSchema = new mongoose.Schema(
@@ -91,6 +98,7 @@ const orderSchema = new mongoose.Schema(
       required: true,
       unique: true,
       index: true,
+      trim: true,
     },
 
     user: {
@@ -104,7 +112,8 @@ const orderSchema = new mongoose.Schema(
       type: [orderItemSchema],
       required: true,
       validate: {
-        validator: (items) => items.length > 0,
+        validator: (items) =>
+          Array.isArray(items) && items.length > 0,
         message: "Order must contain at least one item",
       },
     },
@@ -140,11 +149,9 @@ const orderSchema = new mongoose.Schema(
 
     paymentMethod: {
       type: String,
-      enum: [
-        "COD",
-        "RAZORPAY",
-      ],
+      enum: ["COD", "RAZORPAY"],
       default: "COD",
+      required: true,
     },
 
     paymentStatus: {
@@ -156,11 +163,37 @@ const orderSchema = new mongoose.Schema(
         "Refunded",
       ],
       default: "Pending",
+      index: true,
     },
 
     paymentId: {
       type: String,
       default: "",
+      trim: true,
+    },
+
+    /*
+    --------------------------------------------
+    RAZORPAY DETAILS
+    --------------------------------------------
+    */
+
+    razorpayOrderId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    razorpayPaymentId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    razorpaySignature: {
+      type: String,
+      default: "",
+      trim: true,
     },
 
     orderStatus: {
@@ -170,17 +203,26 @@ const orderSchema = new mongoose.Schema(
         "Confirmed",
         "Processing",
         "Shipped",
+        "Out for Delivery",
         "Delivered",
         "Cancelled",
+        "Refunded",
       ],
       default: "Pending",
       index: true,
     },
 
+    /*
+    --------------------------------------------
+    COUPON
+    --------------------------------------------
+    */
+
     couponCode: {
       type: String,
       default: "",
       trim: true,
+      uppercase: true,
     },
 
     notes: {
@@ -209,3 +251,4 @@ const Order =
   mongoose.model("Order", orderSchema);
 
 export default Order;
+

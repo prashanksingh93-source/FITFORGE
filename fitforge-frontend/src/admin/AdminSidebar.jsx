@@ -1,215 +1,168 @@
 import React from "react";
-
+import { NavLink } from "react-router-dom";
+import { CreditCard } from "lucide-react";
 import {
   LayoutDashboard,
   Package,
-  Warehouse,
-  ShoppingBag,
+  ShoppingCart,
   Users,
+  Warehouse,
   Megaphone,
-  TicketPercent,
-  Tags,
+  Tag,
   Star,
-  Settings,
-  LogOut,
+  Home,
+  FolderTree,
   X,
 } from "lucide-react";
 
-import {
-  NavLink,
-  useNavigate,
-} from "react-router-dom";
-
-const AdminSidebar = ({
-  mobileOpen = false,
-  onClose,
-}) => {
-  const navigate = useNavigate();
-
+const AdminSidebar = ({ isOpen = true, onClose }) => {
   const menuItems = [
     {
-      name: "Dashboard",
+      label: "Dashboard",
       path: "/admin",
       icon: LayoutDashboard,
     },
-
     {
-      name: "Products",
+      label: "Products",
       path: "/admin/products",
       icon: Package,
     },
-
     {
-      name: "Inventory",
+      label: "Categories",
+      path: "/admin/categories",
+      icon: FolderTree,
+    },
+    {
+      label: "Inventory",
       path: "/admin/inventory",
       icon: Warehouse,
     },
-
     {
-      name: "Orders",
+      label: "Orders",
       path: "/admin/orders",
-      icon: ShoppingBag,
+      icon: ShoppingCart,
     },
-
     {
-      name: "Customers",
+      label: "Payments",
+      path: "/admin/payments",
+      icon: CreditCard,
+    },
+    {
+      label: "Customers",
       path: "/admin/customers",
       icon: Users,
     },
-
     {
-      name: "Promotions",
+      label: "Promotions",
       path: "/admin/promotions",
       icon: Megaphone,
     },
-
     {
-      name: "Coupons",
+      label: "Coupons",
       path: "/admin/coupons",
-      icon: TicketPercent,
+      icon: Tag,
     },
-
     {
-      name: "Categories",
-      path: "/admin/categories",
-      icon: Tags,
-    },
-
-    {
-      name: "Reviews",
+      label: "Reviews",
       path: "/admin/reviews",
       icon: Star,
     },
-
     {
-      name: "Settings",
-      path: "/admin/settings",
-      icon: Settings,
+      label: "Homepage",
+      path: "/admin/homepage",
+      icon: Home,
     },
   ];
 
-  const handleLogout = () => {
-    localStorage.removeItem(
-      "fitforge-user"
-    );
-
-    localStorage.removeItem(
-      "fitforge-token"
-    );
-
-    navigate("/admin/login");
-  };
-
   return (
     <>
-      {mobileOpen && (
+      {/* Mobile overlay */}
+      {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={onClose}
         />
       )}
 
+      {/* Sidebar */}
       <aside
         className={`
-          fixed
-          left-0
-          top-0
-          z-50
-          flex
-          h-screen
-          w-64
-          flex-col
-          bg-black
-          text-white
-          transition-transform
-          duration-300
-          lg:translate-x-0
-          ${
-            mobileOpen
-              ? "translate-x-0"
-              : "-translate-x-full"
-          }
+          fixed left-0 top-0 z-50
+          flex h-screen w-64 flex-col
+          border-r border-gray-200 bg-white
+          transition-transform duration-300
+          lg:static lg:z-auto lg:translate-x-0
+          ${isOpen ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        <div className="flex h-20 items-center justify-between border-b border-white/10 px-6">
-          <div>
-            <h1 className="text-xl font-black tracking-widest">
-              FITFORGE
-            </h1>
-
-            <p className="mt-1 text-[10px] uppercase tracking-[0.3em] text-gray-400">
-              Admin Panel
-            </p>
-          </div>
-
-          <button
+        {/* Header */}
+        <div className="flex h-20 items-center justify-between border-b border-gray-200 px-5">
+          <NavLink
+            to="/admin"
+            className="text-2xl font-black tracking-tight text-black"
             onClick={onClose}
-            className="lg:hidden"
+          >
+            FITFORGE
+          </NavLink>
+
+          {/* Mobile close button */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-black lg:hidden"
+            aria-label="Close sidebar"
           >
             <X size={22} />
           </button>
         </div>
 
+        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-5">
           <div className="space-y-1">
-            {menuItems.map(
-              (item) => {
-                const Icon =
-                  item.icon;
+            {menuItems.map((item) => {
+              const Icon = item.icon;
 
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    end={
-                      item.path ===
-                      "/admin"
-                    }
-                    onClick={onClose}
-                    className={({
-                      isActive,
-                    }) =>
-                      `
-                      flex
-                      items-center
-                      gap-3
-                      rounded-lg
-                      px-4
-                      py-3
-                      text-sm
-                      font-medium
-                      transition
-                      ${
-                        isActive
-                          ? "bg-white text-black"
-                          : "text-gray-400 hover:bg-white/10 hover:text-white"
-                      }
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.path === "/admin"}
+                  onClick={onClose}
+                  className={({ isActive }) =>
                     `
+                    group flex items-center gap-3 rounded-xl
+                    px-4 py-3 text-sm font-medium
+                    transition-all duration-200
+                    ${
+                      isActive
+                        ? "bg-black text-white shadow-sm"
+                        : "text-gray-700 hover:bg-gray-100 hover:text-black"
                     }
-                  >
-                    <Icon size={19} />
+                    `
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <Icon size={19} strokeWidth={isActive ? 2.5 : 2} />
 
-                    <span>
-                      {item.name}
-                    </span>
-                  </NavLink>
-                );
-              }
-            )}
+                      <span>{item.label}</span>
+                    </>
+                  )}
+                </NavLink>
+              );
+            })}
           </div>
         </nav>
 
-        <div className="border-t border-white/10 p-3">
-          <button
-            onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-gray-400 transition hover:bg-red-500/10 hover:text-red-400"
-          >
-            <LogOut size={19} />
+        {/* Footer */}
+        <div className="border-t border-gray-200 p-4">
+          <div className="rounded-xl bg-gray-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              FITFORGE
+            </p>
 
-            <span>
-              Logout
-            </span>
-          </button>
+            <p className="mt-1 text-xs text-gray-400">Admin Panel</p>
+          </div>
         </div>
       </aside>
     </>

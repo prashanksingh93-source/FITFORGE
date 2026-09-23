@@ -1,174 +1,159 @@
 import React from "react";
-import { Link } from "react-router-dom";
 import {
   Heart,
   ShoppingBag,
+  Star,
 } from "lucide-react";
-import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
-import { useStore } from "../context/StoreContext";
-
-export default function ProductCard({ product }) {
-  const {
-    addToCart,
-    toggleWishlist,
-    isInWishlist,
-  } = useStore();
-
-  if (!product?._id) {
-    return null;
-  }
-
+const ProductCard = ({ product }) => {
   const image =
+    product.thumbnail ||
     product.images?.[0] ||
-    "https://via.placeholder.com/500x600?text=FITFORGE";
+    null;
 
-  const price =
+  const price = Number(product.price || 0);
+
+  const salePrice =
     product.salePrice !== null &&
-    product.salePrice !== undefined
+    product.salePrice !== undefined &&
+    product.salePrice !== ""
       ? Number(product.salePrice)
-      : Number(product.price || 0);
-
-  const originalPrice =
-    product.salePrice !== null &&
-    product.salePrice !== undefined
-      ? Number(product.price || 0)
       : null;
 
-  const outOfStock =
-    product.stock !== undefined &&
-    Number(product.stock) <= 0;
+  const finalPrice =
+    salePrice !== null && salePrice < price
+      ? salePrice
+      : price;
 
-  const handleAddToCart = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
+  const discount =
+    salePrice !== null && salePrice < price
+      ? Math.round(
+          ((price - salePrice) / price) * 100
+        )
+      : 0;
 
-    if (outOfStock) {
-      toast.error("This product is out of stock");
-      return;
-    }
+  const stock = Number(product.stock || 0);
 
-    const size = product.sizes?.[0] || "";
-    const color = product.colors?.[0]?.name || "";
-
-    addToCart(
-      product,
-      1,
-      size,
-      color
-    );
-
-    toast.success(
-      `${product.name} added to cart`
-    );
-  };
-
-  const handleWishlist = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const alreadyInWishlist =
-      isInWishlist(product._id);
-
-    toggleWishlist(product);
-
-    if (alreadyInWishlist) {
-      toast.success("Removed from wishlist");
-    } else {
-      toast.success("Added to wishlist");
-    }
-  };
+  const isOutOfStock = stock <= 0;
 
   return (
-    <article className="group">
-      {/* PRODUCT IMAGE */}
-      <div className="relative overflow-hidden bg-gray-100">
+    <div className="group relative">
+      {/* IMAGE */}
+      <div className="relative aspect-[4/5] overflow-hidden bg-gray-100">
         <Link to={`/product/${product._id}`}>
-          <img
-            src={image}
-            alt={product.name}
-            className="w-full aspect-[4/5] object-cover transition duration-500 group-hover:scale-105"
-          />
+          {image ? (
+            <img
+              src={image}
+              alt={product.name}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-gray-400">
+              No Image
+            </div>
+          )}
         </Link>
 
-        {/* BADGES */}
-        {product.badges?.length > 0 && (
-          <div className="absolute top-4 left-4 flex flex-col gap-2">
-            {product.badges
-              .slice(0, 2)
-              .map((badge) => (
-                <span
-                  key={badge}
-                  className="bg-black text-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider"
-                >
-                  {badge}
-                </span>
-              ))}
-          </div>
+        {/* DISCOUNT */}
+        {discount > 0 && (
+          <span className="absolute left-3 top-3 bg-black px-2.5 py-1 text-xs font-semibold text-white">
+            {discount}% OFF
+          </span>
+        )}
+
+        {/* NEW */}
+        {product.isNewArrival && (
+          <span className="absolute left-3 top-11 bg-white px-2.5 py-1 text-xs font-semibold text-black">
+            NEW
+          </span>
         )}
 
         {/* WISHLIST */}
         <button
           type="button"
-          onClick={handleWishlist}
-          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm hover:bg-black hover:text-white transition"
-          aria-label="Toggle wishlist"
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-sm transition hover:bg-black hover:text-white"
+          aria-label="Add to wishlist"
         >
-          <Heart
-            className={`w-5 h-5 ${
-              isInWishlist(product._id)
-                ? "fill-current"
-                : ""
-            }`}
-          />
+          <Heart size={17} />
         </button>
+
+        {/* OUT OF STOCK */}
+        {isOutOfStock && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+            <span className="bg-white px-4 py-2 text-sm font-bold">
+              OUT OF STOCK
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* PRODUCT DETAILS */}
-      <div className="pt-5">
-        <Link to={`/product/${product._id}`}>
-          <p className="text-xs tracking-[0.2em] uppercase text-gray-400">
+      {/* DETAILS */}
+      <div className="pt-4">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
             {product.collection}
           </p>
 
-          <h3 className="font-bold text-lg mt-1 hover:underline">
+          {product.rating > 0 && (
+            <div className="flex items-center gap-1 text-xs">
+              <Star
+                size={13}
+                fill="currentColor"
+              />
+
+              <span>
+                {Number(product.rating).toFixed(1)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <Link to={`/product/${product._id}`}>
+          <h3 className="line-clamp-2 min-h-[40px] text-sm font-semibold text-gray-900 transition group-hover:underline md:text-base">
             {product.name}
           </h3>
-
-          <div className="flex items-center gap-3 mt-2">
-            <span className="font-bold">
-              ₹{price.toLocaleString("en-IN")}
-            </span>
-
-            {originalPrice && (
-              <span className="text-sm text-gray-400 line-through">
-                ₹
-                {originalPrice.toLocaleString(
-                  "en-IN"
-                )}
-              </span>
-            )}
-          </div>
         </Link>
 
-        {/* ADD TO CART */}
-        <button
-          type="button"
-          onClick={handleAddToCart}
-          disabled={outOfStock}
-          className={`mt-4 w-full py-3 flex items-center justify-center gap-2 font-bold text-sm transition ${
-            outOfStock
-              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-              : "bg-black text-white hover:bg-gray-800"
+        {/* PRICE */}
+        <div className="mt-2 flex items-center gap-2">
+          <span className="font-semibold text-gray-900">
+            ₹{finalPrice.toLocaleString("en-IN")}
+          </span>
+
+          {salePrice !== null &&
+            salePrice < price && (
+              <span className="text-sm text-gray-400 line-through">
+                ₹{price.toLocaleString("en-IN")}
+              </span>
+            )}
+        </div>
+
+        {/* STOCK */}
+        {!isOutOfStock && stock <= 5 && (
+          <p className="mt-2 text-xs font-medium text-orange-600">
+            Only {stock} left
+          </p>
+        )}
+
+        {/* QUICK ADD */}
+        <Link
+          to={`/product/${product._id}`}
+          className={`mt-4 flex w-full items-center justify-center gap-2 border px-4 py-2.5 text-sm font-semibold transition ${
+            isOutOfStock
+              ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+              : "border-black bg-black text-white hover:bg-white hover:text-black"
           }`}
         >
-          <ShoppingBag className="w-4 h-4" />
+          <ShoppingBag size={16} />
 
-          {outOfStock
-            ? "OUT OF STOCK"
-            : "ADD TO CART"}
-        </button>
+          {isOutOfStock
+            ? "Out of Stock"
+            : "View Product"}
+        </Link>
       </div>
-    </article>
+    </div>
   );
-}
+};
+
+export default ProductCard;

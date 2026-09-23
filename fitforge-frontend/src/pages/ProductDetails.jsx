@@ -32,28 +32,35 @@ export default function ProductDetails() {
     const fetchProduct = async () => {
       try {
         setLoading(true);
+        setError("");
 
-        const response = await api.get(
-          `/products/${id}`
-        );
+        const response = await api.get(`/products/${id}`);
 
         if (response.data.success) {
           const productData = response.data.product;
 
           setProduct(productData);
 
+          // Default size
           if (productData.sizes?.length) {
             setSelectedSize(productData.sizes[0]);
           }
 
+          // Default color
           if (productData.colors?.length) {
+            const firstColor = productData.colors[0];
+
             setSelectedColor(
-              productData.colors[0].name
+              typeof firstColor === "string"
+                ? firstColor
+                : firstColor?.name || ""
             );
           }
+        } else {
+          setError("Product not found.");
         }
       } catch (error) {
-        console.error(error);
+        console.error("Product fetch error:", error);
         setError("Product not found.");
       } finally {
         setLoading(false);
@@ -89,6 +96,7 @@ export default function ProductDetails() {
   }
 
   const image =
+    product.thumbnail ||
     product.images?.[0] ||
     "https://via.placeholder.com/700x850?text=FITFORGE";
 
@@ -98,6 +106,8 @@ export default function ProductDetails() {
   const wishlisted = isInWishlist(product._id);
 
   const addProductToCart = () => {
+    if (product.stock <= 0) return;
+
     addToCart(
       product,
       quantity,
@@ -106,8 +116,21 @@ export default function ProductDetails() {
     );
   };
 
+  const increaseQuantity = () => {
+    setQuantity((current) =>
+      Math.min(product.stock || 1, current + 1)
+    );
+  };
+
+  const decreaseQuantity = () => {
+    setQuantity((current) =>
+      Math.max(1, current - 1)
+    );
+  };
+
   return (
     <main className="max-w-7xl mx-auto px-6 py-12">
+      {/* BACK */}
       <Link
         to="/shop"
         className="inline-flex items-center gap-2 text-sm mb-10"
@@ -128,32 +151,71 @@ export default function ProductDetails() {
 
         {/* INFORMATION */}
         <div className="py-4">
-          <p className="text-sm tracking-[0.3em] uppercase text-gray-500">
-            {product.collection}
-          </p>
+          {/* COLLECTION */}
+          {product.collection && (
+            <p className="text-sm tracking-[0.3em] uppercase text-gray-500">
+              {product.collection}
+            </p>
+          )}
 
+          {/* NAME */}
           <h1 className="text-4xl md:text-5xl font-black mt-4">
             {product.name}
           </h1>
 
+          {/* PRICE */}
           <div className="flex items-center gap-4 mt-6">
             <span className="text-2xl font-bold">
               ₹{price.toLocaleString("en-IN")}
             </span>
 
             {product.salePrice && (
-              <span className="line-through text-gray-500">
-                ₹
-                {product.price.toLocaleString(
-                  "en-IN"
+              <>
+                <span className="line-through text-gray-500">
+                  ₹
+                  {product.price.toLocaleString(
+                    "en-IN"
+                  )}
+                </span>
+
+                {product.price > 0 && (
+                  <span className="text-sm font-semibold text-red-600">
+                    {Math.round(
+                      ((product.price -
+                        product.salePrice) /
+                        product.price) *
+                        100
+                    )}
+                    % OFF
+                  </span>
                 )}
-              </span>
+              </>
             )}
           </div>
 
-          <p className="text-gray-600 leading-relaxed mt-8">
-            {product.description}
-          </p>
+          {/* DESCRIPTION */}
+          {product.description && (
+            <p className="text-gray-600 leading-relaxed mt-8">
+              {product.description}
+            </p>
+          )}
+
+          {/* STOCK STATUS */}
+          <div className="mt-6">
+            {product.stock <= 0 ? (
+              <span className="font-semibold text-red-600">
+                Out of Stock
+              </span>
+            ) : product.stock <= 5 ? (
+              <span className="font-semibold text-orange-600">
+                Only {product.stock} left
+              </span>
+            ) : (
+              <span className="font-semibold text-green-600">
+                In Stock
+              </span>
+            )}
+          </div>
 
           {/* COLORS */}
           {product.colors?.length > 0 && (
@@ -163,21 +225,52 @@ export default function ProductDetails() {
               </h3>
 
               <div className="flex gap-3 flex-wrap">
-                {product.colors.map((color) => (
-                  <button
-                    key={color.name}
-                    onClick={() =>
-                      setSelectedColor(color.name)
-                    }
-                    className={`px-4 py-2 border ${
-                      selectedColor === color.name
-                        ? "border-black bg-black text-white"
-                        : "border-gray-300"
-                    }`}
-                  >
-                    {color.name}
-                  </button>
-                ))}
+                {product.colors.map(
+                  (color, index) => {
+                    const colorName =
+                      typeof color === "string"
+                        ? color
+                        : color?.name || "";
+
+                    const colorHex =
+                      typeof color === "string"
+                        ? color
+                        : color?.hex || "#000000";
+
+                    const isSelected =
+                      selectedColor === colorName;
+
+                    return (
+                      <button
+                        key={`${colorName}-${index}`}
+                        type="button"
+                        title={colorName}
+                        onClick={() =>
+                          setSelectedColor(
+                            colorName
+                          )
+                        }
+                        className={`flex items-center gap-2 rounded-md border px-3 py-2 transition ${
+                          isSelected
+                            ? "border-black ring-2 ring-black"
+                            : "border-gray-300"
+                        }`}
+                      >
+                        <span
+                          className="h-5 w-5 rounded-full border"
+                          style={{
+                            backgroundColor:
+                              colorHex,
+                          }}
+                        />
+
+                        <span>
+                          {colorName}
+                        </span>
+                      </button>
+                    );
+                  }
+                )}
               </div>
             </div>
           )}
@@ -190,21 +283,24 @@ export default function ProductDetails() {
               </h3>
 
               <div className="flex gap-3 flex-wrap">
-                {product.sizes.map((size) => (
-                  <button
-                    key={size}
-                    onClick={() =>
-                      setSelectedSize(size)
-                    }
-                    className={`w-12 h-12 border ${
-                      selectedSize === size
-                        ? "border-black bg-black text-white"
-                        : "border-gray-300"
-                    }`}
-                  >
-                    {size}
-                  </button>
-                ))}
+                {product.sizes.map(
+                  (size, index) => (
+                    <button
+                      key={`${size}-${index}`}
+                      type="button"
+                      onClick={() =>
+                        setSelectedSize(size)
+                      }
+                      className={`w-12 h-12 border ${
+                        selectedSize === size
+                          ? "border-black bg-black text-white"
+                          : "border-gray-300"
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  )
+                )}
               </div>
             </div>
           )}
@@ -217,12 +313,10 @@ export default function ProductDetails() {
 
             <div className="flex items-center border w-fit">
               <button
-                onClick={() =>
-                  setQuantity(
-                    Math.max(1, quantity - 1)
-                  )
-                }
-                className="p-3"
+                type="button"
+                onClick={decreaseQuantity}
+                disabled={quantity <= 1}
+                className="p-3 disabled:opacity-40"
               >
                 <Minus className="w-4" />
               </button>
@@ -232,15 +326,13 @@ export default function ProductDetails() {
               </span>
 
               <button
-                onClick={() =>
-                  setQuantity(
-                    Math.min(
-                      product.stock || 99,
-                      quantity + 1
-                    )
-                  )
+                type="button"
+                onClick={increaseQuantity}
+                disabled={
+                  product.stock <= 0 ||
+                  quantity >= product.stock
                 }
-                className="p-3"
+                className="p-3 disabled:opacity-40"
               >
                 <Plus className="w-4" />
               </button>
@@ -250,21 +342,25 @@ export default function ProductDetails() {
           {/* ACTIONS */}
           <div className="flex gap-4 mt-10">
             <button
+              type="button"
               onClick={addProductToCart}
               disabled={product.stock <= 0}
               className="flex-1 bg-black text-white py-4 font-bold flex items-center justify-center gap-3 disabled:bg-gray-400"
             >
               <ShoppingBag className="w-5" />
+
               {product.stock > 0
                 ? "ADD TO CART"
                 : "OUT OF STOCK"}
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 toggleWishlist(product)
               }
               className="border px-5"
+              aria-label="Add to wishlist"
             >
               <Heart
                 className={
@@ -279,32 +375,75 @@ export default function ProductDetails() {
           {/* PRODUCT DETAILS */}
           <div className="border-t mt-10 pt-8 space-y-4 text-sm">
             {product.material && (
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-6">
                 <span className="text-gray-500">
                   Material
                 </span>
-                <span>{product.material}</span>
+
+                <span className="text-right">
+                  {product.material}
+                </span>
               </div>
             )}
 
             {product.fit && (
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-6">
                 <span className="text-gray-500">
                   Fit
                 </span>
-                <span>{product.fit}</span>
+
+                <span className="text-right">
+                  {product.fit}
+                </span>
+              </div>
+            )}
+
+            {product.gender && (
+              <div className="flex justify-between gap-6">
+                <span className="text-gray-500">
+                  Gender
+                </span>
+
+                <span className="text-right">
+                  {product.gender}
+                </span>
+              </div>
+            )}
+
+            {product.sku && (
+              <div className="flex justify-between gap-6">
+                <span className="text-gray-500">
+                  SKU
+                </span>
+
+                <span className="text-right">
+                  {product.sku}
+                </span>
               </div>
             )}
 
             {product.stock !== undefined && (
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-6">
                 <span className="text-gray-500">
                   Stock
                 </span>
-                <span>
+
+                <span className="text-right">
                   {product.stock > 0
                     ? `${product.stock} available`
                     : "Out of stock"}
+                </span>
+              </div>
+            )}
+
+            {product.careInstructions && (
+              <div className="flex justify-between gap-6">
+                <span className="text-gray-500">
+                  Care
+                </span>
+
+                <span className="text-right max-w-xs">
+                  {product.careInstructions}
                 </span>
               </div>
             )}

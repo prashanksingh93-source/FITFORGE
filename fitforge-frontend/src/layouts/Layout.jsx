@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { Outlet } from "react-router-dom";
 import Navbar from "../components/Navbar";
 
@@ -12,6 +13,7 @@ export default function Layout() {
       <footer className="bg-black text-white py-16 mt-20">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid md:grid-cols-4 gap-10">
+            {/* BRAND */}
             <div>
               <h2 className="text-2xl font-black">
                 FITFORGE
@@ -24,58 +26,100 @@ export default function Layout() {
               </p>
             </div>
 
+            {/* SHOP */}
             <div>
               <h3 className="font-bold mb-4">
                 SHOP
               </h3>
 
               <div className="space-y-2 text-gray-400 text-sm">
-                <a
-                  href="/shop"
-                  className="block hover:text-white"
+                <Link
+                  to="/shop"
+                  className="block hover:text-white transition"
                 >
                   All Products
-                </a>
+                </Link>
 
-                <a
-                  href="/shop?collection=Performance"
-                  className="block hover:text-white"
+                <Link
+                  to="/shop?collection=Performance"
+                  className="block hover:text-white transition"
                 >
                   Performance
-                </a>
+                </Link>
 
-                <a
-                  href="/shop?collection=Luxury"
-                  className="block hover:text-white"
+                <Link
+                  to="/shop?collection=Luxury"
+                  className="block hover:text-white transition"
                 >
                   Luxury
-                </a>
+                </Link>
               </div>
             </div>
 
+            {/* CUSTOMER */}
             <div>
               <h3 className="font-bold mb-4">
                 CUSTOMER
               </h3>
 
               <div className="space-y-2 text-gray-400 text-sm">
-                <a href="/profile">My Account</a>
-                <br />
-                <a href="/orders">Orders</a>
-                <br />
-                <a href="/wishlist">Wishlist</a>
+                <Link
+                  to="/profile"
+                  className="block hover:text-white transition"
+                >
+                  My Account
+                </Link>
+
+                <Link
+                  to="/orders"
+                  className="block hover:text-white transition"
+                >
+                  Orders
+                </Link>
+
+                <Link
+                  to="/wishlist"
+                  className="block hover:text-white transition"
+                >
+                  Wishlist
+                </Link>
+
+                <Link
+                  to="/cart"
+                  className="block hover:text-white transition"
+                >
+                  Cart
+                </Link>
               </div>
             </div>
 
+            {/* FITFORGE */}
             <div>
               <h3 className="font-bold mb-4">
                 FITFORGE
               </h3>
 
-              <p className="text-gray-400 text-sm">
+              <p className="text-gray-400 text-sm leading-relaxed">
                 © {new Date().getFullYear()} FITFORGE.
                 All rights reserved.
               </p>
+            </div>
+          </div>
+
+          {/* BOTTOM SECTION */}
+          <div className="border-t border-gray-800 mt-12 pt-6">
+            <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
+              <p className="text-xs text-gray-500">
+                © {new Date().getFullYear()} FITFORGE. All rights reserved.
+              </p>
+
+              {/* ADMIN LOGIN */}
+              <Link
+                to="/admin/login"
+                className="text-xs text-gray-500 hover:text-white transition"
+              >
+                Admin Login
+              </Link>
             </div>
           </div>
         </div>
@@ -83,3 +127,4 @@ export default function Layout() {
     </div>
   );
 }
+
