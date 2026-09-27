@@ -85,7 +85,7 @@ export default function Cart() {
 
         <Link
           to="/shop"
-          className="mt-8 bg-black text-white px-8 py-4 font-bold hover:bg-gray-800 transition"
+          className="mt-8 bg-[oklch(54.2%_0.034_322.5)] rounded-lg px-4 py-2 text-white px-8 py-4 font-bold hover:bg-gray-800 transition"
         >
           SHOP NOW
         </Link>

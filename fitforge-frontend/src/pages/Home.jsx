@@ -38,7 +38,10 @@ const Home = () => {
 
         setHomepage(response.data.homepage);
       } catch (error) {
-        console.error("Homepage settings error:", error);
+        console.error(
+          "Homepage settings error:",
+          error.response?.data || error.message
+        );
       } finally {
         setHomepageLoading(false);
       }
@@ -48,32 +51,28 @@ const Home = () => {
   }, []);
 
   // =========================================================
-  // FETCH PROMOTIONS
+  // FETCH ACTIVE PROMOTIONS
   // =========================================================
 
   useEffect(() => {
     const fetchPromotions = async () => {
       try {
-        const response = await api.get("/promotions");
-
-        /*
-          Support common API response formats:
-
-          {
-            promotions: [...]
-          }
-
-          or
-
-          {
-            data: [...]
-          }
-
-          or directly:
-          [...]
-        */
+        // IMPORTANT:
+        // Backend route is:
+        // GET /api/promotions/active
+        const response = await api.get("/promotions/active");
 
         const data = response.data;
+
+        /*
+          Backend response:
+
+          {
+            success: true,
+            count: 2,
+            promotions: [...]
+          }
+        */
 
         const promotionList = Array.isArray(data)
           ? data
@@ -85,7 +84,7 @@ const Home = () => {
       } catch (error) {
         console.error(
           "Promotions fetch error:",
-          error.response?.data || error
+          error.response?.data || error.message
         );
 
         setPromotions([]);
@@ -187,8 +186,8 @@ const Home = () => {
       })
       .sort(
         (a, b) =>
-          (a.displayOrder ?? 0) -
-          (b.displayOrder ?? 0)
+          (b.priority ?? 0) -
+          (a.priority ?? 0)
       );
   }, [promotions]);
 
@@ -508,11 +507,7 @@ const PromotionBanner = ({
   const [currentIndex, setCurrentIndex] =
     useState(0);
 
-  /*
-    Safety check in case the promotion list
-    changes after the component is mounted.
-  */
-
+  // Keep index valid if promotions change
   useEffect(() => {
     if (
       currentIndex >= promotions.length
@@ -524,11 +519,7 @@ const PromotionBanner = ({
     promotions.length,
   ]);
 
-  /*
-    Automatically rotate when there is
-    more than one active promotion.
-  */
-
+  // Automatically rotate promotions
   useEffect(() => {
     if (promotions.length <= 1) {
       return undefined;
@@ -552,12 +543,15 @@ const PromotionBanner = ({
   const promotion =
     promotions[currentIndex];
 
+  // IMPORTANT:
+  // These names match your MongoDB Promotion model.
+
   const buttonText =
     promotion.buttonText ||
     "SHOP NOW";
 
   const buttonUrl =
-    promotion.buttonUrl ||
+    promotion.buttonLink ||
     "/shop";
 
   const image =
@@ -577,8 +571,9 @@ const PromotionBanner = ({
     promotion.description ||
     "";
 
+  // Your backend uses discountText
   const discount =
-    promotion.discount;
+    promotion.discountText || "";
 
   return (
     <section className="relative overflow-hidden bg-neutral-950 text-white">
@@ -641,17 +636,13 @@ const PromotionBanner = ({
               </p>
             )}
 
-            {discount !== undefined &&
-              discount !== null &&
-              discount !== "" && (
-                <div className="mt-5 inline-flex border border-white/30 px-4 py-2 text-sm font-black uppercase tracking-[0.15em]">
+            {discount && (
+              <div className="mt-5 inline-flex border border-white/30 px-4 py-2 text-sm font-black uppercase tracking-[0.15em]">
 
-                  {typeof discount === "number"
-                    ? `${discount}% OFF`
-                    : discount}
+                {discount}
 
-                </div>
-              )}
+              </div>
+            )}
 
             <div className="mt-7">
 
@@ -845,13 +836,7 @@ const CollectionSection = ({
 
           <div>
 
-            <p
-              className={
-                dark
-                  ? "text-xs font-bold uppercase tracking-[0.25em] text-neutral-500"
-                  : "text-xs font-bold uppercase tracking-[0.25em] text-neutral-500"
-              }
-            >
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">
 
               {collection}
 

@@ -1,10 +1,4 @@
-import {
-  BrowserRouter,
-  Navigate,
-  Route,
-  Routes,
-} from "react-router-dom";
-
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 
 import Layout from "./layouts/Layout";
@@ -24,6 +18,7 @@ import Profile from "./pages/Profile";
 import Orders from "./pages/Orders";
 import OrderDetails from "./pages/OrderDetails";
 import Checkout from "./pages/Checkout";
+import Settings from "./pages/Settings";
 
 // =====================================================
 // ADMIN
@@ -39,7 +34,7 @@ import AdminOrderDetails from "./admin/AdminOrderDetails";
 import AdminCustomers from "./admin/AdminCustomers";
 import AdminCustomerDetails from "./admin/AdminCustomerDetails";
 import AdminInventory from "./admin/AdminInventory";
-import AdminPromotions from "./admin/AdminPromotions";
+// import AdminPromotions from "./admin/AdminPromotions";
 import AdminHomepage from "./admin/AdminHomepage";
 import AdminCategories from "./admin/AdminCategories";
 import AdminReviews from "./admin/AdminReviews";
@@ -48,7 +43,7 @@ import AdminSettings from "./admin/AdminSettings";
 import AdminPayments from "./admin/AdminPayments";
 
 // =====================================================
-// AUTH
+// AUTH / COMPONENTS
 // =====================================================
 
 import { useAuth } from "./context/AuthContext";
@@ -98,134 +93,103 @@ const ProtectedRoute = ({ children }) => {
 const App = () => {
   return (
     <BrowserRouter>
-      {/* ===============================================
+      {/* =================================================
           GLOBAL SCROLL
-      ================================================ */}
+      ================================================== */}
+
       <ScrollToTop />
 
-      {/* ===============================================
+      {/* =================================================
           TOASTER
-      ================================================ */}
-      <Toaster
-        position="top-right"
-        richColors
-        closeButton
-      />
+      ================================================== */}
 
-      {/* ===============================================
-          CUSTOMER LAYOUT
-          
-          IMPORTANT:
-          Layout stays OUTSIDE AnimatedRoutes.
-          
-          Therefore:
-          Navbar does NOT animate.
-      ================================================ */}
+      <Toaster position="top-right" richColors closeButton />
+
+      {/* =================================================
+          ALL ROUTES
+      ================================================== */}
 
       <Routes>
-        <Route element={<Layout />}>
+        {/* =================================================
+            CUSTOMER LAYOUT
+        ================================================== */}
 
-          {/* ===========================================
-              CUSTOMER PAGE ANIMATION
-              
-              Navbar remains static because Layout
-              is outside AnimatedRoutes.
-          ============================================ */}
+        <Route element={<Layout />}>
+          {/* =================================================
+              ANIMATED CUSTOMER PAGES
+
+              Layout is outside AnimatedRoutes.
+              Therefore Navbar stays static.
+          ================================================== */}
 
           <Route element={<AnimatedRoutes />}>
-
-            {/* =========================================
+            {/* =================================================
                 HOME
-            ========================================== */}
+            ================================================== */}
 
-            <Route
-              path="/"
-              element={<Home />}
-            />
+            <Route path="/" element={<Home />} />
 
-            {/* =========================================
+            {/* =================================================
                 SHOP
-            ========================================== */}
+            ================================================== */}
 
-            <Route
-              path="/shop"
-              element={<Shop />}
-            />
+            <Route path="/shop" element={<Shop excludeCollection="Luxury" />} />
 
-            {/* =========================================
+            {/* =================================================
                 PERFORMANCE
-
-                DO NOT CHANGE
-            ========================================== */}
+            ================================================== */}
 
             <Route
               path="/performance"
-              element={
-                <Shop collection="Performance" />
-              }
+              element={<Shop collection="Performance" />}
             />
 
-            {/* =========================================
+            {/* =================================================
                 LUXURY
+            ================================================== */}
 
-                DO NOT CHANGE
-            ========================================== */}
+            <Route path="/luxury" element={<Shop collection="Luxury" />} />
 
-            <Route
-              path="/luxury"
-              element={
-                <Shop collection="Luxury" />
-              }
-            />
+            {/* =================================================
+                CUSTOMER SETTINGS
+                Change Password
+            ================================================== */}
 
-            {/* =========================================
+            <Route path="/settings" element={<Settings />} />
+
+            {/* =================================================
                 PRODUCT DETAILS
-            ========================================== */}
+            ================================================== */}
 
-            <Route
-              path="/product/:id"
-              element={<ProductDetails />}
-            />
+            <Route path="/product/:id" element={<ProductDetails />} />
 
-            {/* =========================================
+            {/* =================================================
                 CART
-            ========================================== */}
+            ================================================== */}
 
-            <Route
-              path="/cart"
-              element={<Cart />}
-            />
+            <Route path="/cart" element={<Cart />} />
 
-            {/* =========================================
+            {/* =================================================
                 WISHLIST
-            ========================================== */}
+            ================================================== */}
 
-            <Route
-              path="/wishlist"
-              element={<Wishlist />}
-            />
+            <Route path="/wishlist" element={<Wishlist />} />
 
-            {/* =========================================
+            {/* =================================================
                 LOGIN
-            ========================================== */}
+            ================================================== */}
 
-            <Route
-              path="/login"
-              element={<Login />}
-            />
+            <Route path="/login" element={<Login />} />
 
-            {/* =========================================
+            {/* =================================================
                 REGISTER
-            ========================================== */}
+            ================================================== */}
 
-            <Route
-              path="/register"
-              element={<Register />}
-            />
+            <Route path="/register" element={<Register />} />
 
-            {/* =========================================
+            {/* =================================================
                 PROFILE
-            ========================================== */}
+            ================================================== */}
 
             <Route
               path="/profile"
@@ -236,9 +200,9 @@ const App = () => {
               }
             />
 
-            {/* =========================================
+            {/* =================================================
                 ORDERS
-            ========================================== */}
+            ================================================== */}
 
             <Route
               path="/orders"
@@ -249,9 +213,9 @@ const App = () => {
               }
             />
 
-            {/* =========================================
+            {/* =================================================
                 ORDER DETAILS
-            ========================================== */}
+            ================================================== */}
 
             <Route
               path="/orders/:id"
@@ -262,9 +226,9 @@ const App = () => {
               }
             />
 
-            {/* =========================================
+            {/* =================================================
                 CHECKOUT
-            ========================================== */}
+            ================================================== */}
 
             <Route
               path="/checkout"
@@ -274,7 +238,6 @@ const App = () => {
                 </ProtectedRoute>
               }
             />
-
           </Route>
         </Route>
 
@@ -282,10 +245,7 @@ const App = () => {
             ADMIN LOGIN
         ================================================== */}
 
-        <Route
-          path="/admin/login"
-          element={<AdminLogin />}
-        />
+        <Route path="/admin/login" element={<AdminLogin />} />
 
         {/* =================================================
             ADMIN DASHBOARD
@@ -313,7 +273,9 @@ const App = () => {
           }
         />
 
-        {/* ADD PRODUCT */}
+        {/* =================================================
+            ADD PRODUCT
+        ================================================== */}
 
         <Route
           path="/admin/products/add"
@@ -324,7 +286,9 @@ const App = () => {
           }
         />
 
-        {/* EDIT PRODUCT */}
+        {/* =================================================
+            EDIT PRODUCT
+        ================================================== */}
 
         <Route
           path="/admin/products/edit/:id"
@@ -361,7 +325,9 @@ const App = () => {
           }
         />
 
-        {/* ADMIN ORDER DETAILS */}
+        {/* =================================================
+            ADMIN ORDER DETAILS
+        ================================================== */}
 
         <Route
           path="/admin/orders/:id"
@@ -385,7 +351,9 @@ const App = () => {
           }
         />
 
-        {/* ADMIN CUSTOMER DETAILS */}
+        {/* =================================================
+            ADMIN CUSTOMER DETAILS
+        ================================================== */}
 
         <Route
           path="/admin/customers/:id"
@@ -413,6 +381,7 @@ const App = () => {
             ADMIN PROMOTIONS
         ================================================== */}
 
+        {/*
         <Route
           path="/admin/promotions"
           element={
@@ -421,6 +390,7 @@ const App = () => {
             </AdminRoute>
           }
         />
+        */}
 
         {/* =================================================
             ADMIN HOMEPAGE
@@ -488,22 +458,13 @@ const App = () => {
         />
 
         {/* =================================================
-            404
+            404 / UNKNOWN ROUTE
         ================================================== */}
 
-        <Route
-          path="*"
-          element={
-            <Navigate
-              to="/"
-              replace
-            />
-          }
-        />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
 };
 
 export default App;
-

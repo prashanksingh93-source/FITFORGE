@@ -88,7 +88,7 @@ export const getDashboardStats = async (req, res) => {
 
         pendingOrders,
         deliveredOrders,
-        cancelledOrders,
+        cancelledOrders,  
 
         lowStockProducts,
         outOfStockProducts,

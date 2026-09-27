@@ -46,7 +46,7 @@ import adminProductRoutes from "./routes/adminProduct.routes.js";
 import adminOrderRoutes from "./routes/adminOrder.routes.js";
 import adminCustomerRoutes from "./routes/adminCustomer.routes.js";
 import adminInventoryRoutes from "./routes/adminInventory.routes.js";
-import adminPromotionRoutes from "./routes/adminPromotion.routes.js";
+//import adminPromotionRoutes from "./routes/adminPromotion.routes.js";
 import adminCouponRoutes from "./routes/adminCoupon.routes.js";
 import adminReviewRoutes from "./routes/adminReview.routes.js";
 import adminPaymentRoutes from "./routes/adminPayment.routes.js";
@@ -347,10 +347,10 @@ app.use(
 );
 
 // Promotions
-app.use(
-  "/api/admin/promotions",
-  adminPromotionRoutes,
-);
+// app.use(
+//   "/api/admin/promotions",
+//   adminPromotionRoutes,
+// );
 
 // Coupons
 app.use(

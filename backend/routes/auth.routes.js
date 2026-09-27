@@ -5,24 +5,61 @@ import {
   login,
   logout,
   getMe,
+  changePassword,
 } from "../controllers/auth.controller.js";
 
 import {
   authenticateUser,
 } from "../middleware/auth.middleware.js";
 
-const router = express.Router();
+const router =
+  express.Router();
 
-router.post("/register", register);
+/* =====================================================
+   REGISTER
+===================================================== */
 
-router.post("/login", login);
+router.post(
+  "/register",
+  register
+);
 
-router.post("/logout", logout);
+/* =====================================================
+   LOGIN
+===================================================== */
+
+router.post(
+  "/login",
+  login
+);
+
+/* =====================================================
+   LOGOUT
+===================================================== */
+
+router.post(
+  "/logout",
+  logout
+);
+
+/* =====================================================
+   CURRENT USER
+===================================================== */
 
 router.get(
   "/me",
   authenticateUser,
   getMe
+);
+
+/* =====================================================
+   CHANGE ADMIN PASSWORD
+===================================================== */
+
+router.patch(
+  "/change-password",
+  authenticateUser,
+  changePassword
 );
 
 export default router;

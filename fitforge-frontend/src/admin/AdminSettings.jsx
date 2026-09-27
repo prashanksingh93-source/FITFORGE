@@ -7,6 +7,9 @@ import {
   Store,
   Globe,
   Loader2,
+  LockKeyhole,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "../services/api";
@@ -14,6 +17,11 @@ import api from "../services/api";
 const AdminSettings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  // =====================================================
+  // STORE SETTINGS
+  // =====================================================
 
   const [settings, setSettings] = useState({
     storeName: "FITFORGE",
@@ -43,9 +51,26 @@ const AdminSettings = () => {
     footerText: "© FITFORGE. All rights reserved.",
   });
 
-  /* =========================
-     LOAD SETTINGS
-  ========================= */
+  // =====================================================
+  // CHANGE PASSWORD
+  // =====================================================
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  const [showCurrentPassword, setShowCurrentPassword] =
+    useState(false);
+
+  const [showNewPassword, setShowNewPassword] =
+    useState(false);
+
+  const [showConfirmPassword, setShowConfirmPassword] =
+    useState(false);
+
+  // =====================================================
+  // LOAD SETTINGS
+  // =====================================================
 
   const fetchSettings = async () => {
     try {
@@ -67,8 +92,10 @@ const AdminSettings = () => {
         currency: data.currency ?? "INR",
 
         shippingFee: data.shippingFee ?? 100,
+
         freeShippingThreshold:
           data.freeShippingThreshold ?? 999,
+
         gst: data.gst ?? 0,
 
         codEnabled: data.codEnabled ?? true,
@@ -88,10 +115,13 @@ const AdminSettings = () => {
         socialLinks: {
           instagram:
             data.socialLinks?.instagram ?? "",
+
           facebook:
             data.socialLinks?.facebook ?? "",
+
           youtube:
             data.socialLinks?.youtube ?? "",
+
           twitter:
             data.socialLinks?.twitter ?? "",
         },
@@ -101,7 +131,10 @@ const AdminSettings = () => {
           "© FITFORGE. All rights reserved.",
       });
     } catch (error) {
-      console.error("Failed to load settings:", error);
+      console.error(
+        "Failed to load settings:",
+        error
+      );
 
       toast.error(
         error?.response?.data?.message ||
@@ -116,12 +149,17 @@ const AdminSettings = () => {
     fetchSettings();
   }, []);
 
-  /* =========================
-     INPUT HANDLER
-  ========================= */
+  // =====================================================
+  // STORE INPUT HANDLER
+  // =====================================================
 
   const handleChange = (event) => {
-    const { name, value, type, checked } = event.target;
+    const {
+      name,
+      value,
+      type,
+      checked,
+    } = event.target;
 
     setSettings((previous) => ({
       ...previous,
@@ -132,15 +170,16 @@ const AdminSettings = () => {
     }));
   };
 
-  /* =========================
-     SOCIAL INPUT HANDLER
-  ========================= */
+  // =====================================================
+  // SOCIAL INPUT HANDLER
+  // =====================================================
 
   const handleSocialChange = (event) => {
     const { name, value } = event.target;
 
     setSettings((previous) => ({
       ...previous,
+
       socialLinks: {
         ...previous.socialLinks,
         [name]: value,
@@ -148,9 +187,9 @@ const AdminSettings = () => {
     }));
   };
 
-  /* =========================
-     SAVE SETTINGS
-  ========================= */
+  // =====================================================
+  // SAVE STORE SETTINGS
+  // =====================================================
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -160,21 +199,20 @@ const AdminSettings = () => {
       return;
     }
 
-    const shippingFee = Number(settings.shippingFee);
+    const shippingFee =
+      Number(settings.shippingFee);
 
-    const freeShippingThreshold = Number(
-      settings.freeShippingThreshold
-    );
+    const freeShippingThreshold =
+      Number(settings.freeShippingThreshold);
 
-    const gst = Number(settings.gst);
+    const gst =
+      Number(settings.gst);
 
-    const codAdvancePercentage = Number(
-      settings.codAdvancePercentage
-    );
+    const codAdvancePercentage =
+      Number(settings.codAdvancePercentage);
 
-    const codMinimumAdvance = Number(
-      settings.codMinimumAdvance
-    );
+    const codMinimumAdvance =
+      Number(settings.codMinimumAdvance);
 
     let codMaximumOrderValue = null;
 
@@ -182,25 +220,28 @@ const AdminSettings = () => {
       settings.codMaximumOrderValue !== "" &&
       settings.codMaximumOrderValue !== null
     ) {
-      codMaximumOrderValue = Number(
-        settings.codMaximumOrderValue
-      );
+      codMaximumOrderValue =
+        Number(settings.codMaximumOrderValue);
     }
 
-    /* =========================
-       VALIDATION
-    ========================= */
+    // ===================================================
+    // VALIDATION
+    // ===================================================
 
     if (
       !Number.isFinite(shippingFee) ||
       shippingFee < 0
     ) {
-      toast.error("Enter a valid shipping fee");
+      toast.error(
+        "Enter a valid shipping fee"
+      );
       return;
     }
 
     if (
-      !Number.isFinite(freeShippingThreshold) ||
+      !Number.isFinite(
+        freeShippingThreshold
+      ) ||
       freeShippingThreshold < 0
     ) {
       toast.error(
@@ -214,12 +255,16 @@ const AdminSettings = () => {
       gst < 0 ||
       gst > 100
     ) {
-      toast.error("GST must be between 0 and 100");
+      toast.error(
+        "GST must be between 0 and 100"
+      );
       return;
     }
 
     if (
-      !Number.isFinite(codAdvancePercentage) ||
+      !Number.isFinite(
+        codAdvancePercentage
+      ) ||
       codAdvancePercentage < 0 ||
       codAdvancePercentage > 100
     ) {
@@ -250,7 +295,9 @@ const AdminSettings = () => {
     }
 
     if (
-      !Number.isFinite(codMinimumAdvance) ||
+      !Number.isFinite(
+        codMinimumAdvance
+      ) ||
       codMinimumAdvance < 0
     ) {
       toast.error(
@@ -261,7 +308,9 @@ const AdminSettings = () => {
 
     if (
       codMaximumOrderValue !== null &&
-      (!Number.isFinite(codMaximumOrderValue) ||
+      (!Number.isFinite(
+        codMaximumOrderValue
+      ) ||
         codMaximumOrderValue < 0)
     ) {
       toast.error(
@@ -270,26 +319,40 @@ const AdminSettings = () => {
       return;
     }
 
-    /* =========================
-       SAVE
-    ========================= */
+    // ===================================================
+    // SAVE
+    // ===================================================
 
     try {
       setSaving(true);
 
       const payload = {
-        storeName: settings.storeName.trim(),
-        logo: settings.logo.trim(),
-        email: settings.email.trim(),
-        phone: settings.phone.trim(),
-        address: settings.address.trim(),
-        currency: settings.currency.trim(),
+        storeName:
+          settings.storeName.trim(),
+
+        logo:
+          settings.logo.trim(),
+
+        email:
+          settings.email.trim(),
+
+        phone:
+          settings.phone.trim(),
+
+        address:
+          settings.address.trim(),
+
+        currency:
+          settings.currency.trim(),
 
         shippingFee,
+
         freeShippingThreshold,
+
         gst,
 
-        codEnabled: settings.codEnabled,
+        codEnabled:
+          settings.codEnabled,
 
         codAdvanceEnabled:
           settings.codAdvanceEnabled,
@@ -318,10 +381,11 @@ const AdminSettings = () => {
           settings.footerText.trim(),
       };
 
-      const response = await api.patch(
-        "/settings",
-        payload
-      );
+      const response =
+        await api.patch(
+          "/settings",
+          payload
+        );
 
       const updated =
         response?.data?.settings ||
@@ -356,9 +420,88 @@ const AdminSettings = () => {
     }
   };
 
-  /* =========================
-     LOADING
-  ========================= */
+  // =====================================================
+  // CHANGE PASSWORD
+  // =====================================================
+
+  const handleChangePassword = async (event) => {
+    event.preventDefault();
+
+    if (
+      !currentPassword ||
+      !newPassword ||
+      !confirmPassword
+    ) {
+      toast.error(
+        "Please fill all password fields"
+      );
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      toast.error(
+        "New password must be at least 8 characters"
+      );
+      return;
+    }
+
+    if (
+      newPassword !== confirmPassword
+    ) {
+      toast.error(
+        "New passwords do not match"
+      );
+      return;
+    }
+
+    if (
+      currentPassword === newPassword
+    ) {
+      toast.error(
+        "New password must be different from current password"
+      );
+      return;
+    }
+
+    try {
+      setChangingPassword(true);
+
+      const response =
+        await api.patch(
+          "/auth/change-password",
+          {
+            currentPassword,
+            newPassword,
+          }
+        );
+
+      toast.success(
+        response?.data?.message ||
+          "Password changed successfully"
+      );
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+
+    } catch (error) {
+      console.error(
+        "Change password error:",
+        error
+      );
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Unable to change password"
+      );
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  // =====================================================
+  // LOADING
+  // =====================================================
 
   if (loading) {
     return (
@@ -375,12 +518,17 @@ const AdminSettings = () => {
     );
   }
 
-  /* =========================
-     UI
-  ========================= */
+  // =====================================================
+  // UI
+  // =====================================================
 
   return (
     <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+
+      {/* =================================================
+          HEADER
+      ================================================= */}
+
       <div className="mb-8">
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
           Store Settings
@@ -388,7 +536,7 @@ const AdminSettings = () => {
 
         <p className="mt-2 text-sm text-gray-500">
           Control FITFORGE store, shipping, GST,
-          COD and payment settings.
+          COD, payment and security settings.
         </p>
       </div>
 
@@ -396,12 +544,139 @@ const AdminSettings = () => {
         onSubmit={handleSubmit}
         className="space-y-8"
       >
-        {/* =========================
-            STORE INFORMATION
-        ========================= */}
+
+        {/* =================================================
+            CHANGE PASSWORD
+        ================================================= */}
 
         <section className="bg-white border border-gray-200 rounded-2xl p-5 md:p-7 shadow-sm">
+
           <div className="flex items-center gap-3 mb-6">
+
+            <div className="p-3 bg-black text-white rounded-xl">
+              <LockKeyhole size={21} />
+            </div>
+
+            <div>
+              <h2 className="text-lg font-semibold">
+                Change Admin Password
+              </h2>
+
+              <p className="text-sm text-gray-500">
+                Update the password used to access
+                the FITFORGE admin panel.
+              </p>
+            </div>
+
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+            {/* CURRENT PASSWORD */}
+
+            <PasswordInput
+              label="Current Password"
+              value={currentPassword}
+              onChange={(e) =>
+                setCurrentPassword(
+                  e.target.value
+                )
+              }
+              showPassword={
+                showCurrentPassword
+              }
+              setShowPassword={
+                setShowCurrentPassword
+              }
+              placeholder="Current password"
+            />
+
+            {/* NEW PASSWORD */}
+
+            <PasswordInput
+              label="New Password"
+              value={newPassword}
+              onChange={(e) =>
+                setNewPassword(
+                  e.target.value
+                )
+              }
+              showPassword={
+                showNewPassword
+              }
+              setShowPassword={
+                setShowNewPassword
+              }
+              placeholder="New password"
+            />
+
+            {/* CONFIRM PASSWORD */}
+
+            <PasswordInput
+              label="Confirm New Password"
+              value={confirmPassword}
+              onChange={(e) =>
+                setConfirmPassword(
+                  e.target.value
+                )
+              }
+              showPassword={
+                showConfirmPassword
+              }
+              setShowPassword={
+                setShowConfirmPassword
+              }
+              placeholder="Confirm new password"
+            />
+
+          </div>
+
+          <div className="mt-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+
+            <p className="text-xs text-gray-500">
+              Password must contain at least 8
+              characters.
+            </p>
+
+            <button
+              type="button"
+              onClick={
+                handleChangePassword
+              }
+              disabled={
+                changingPassword
+              }
+              className="inline-flex items-center justify-center gap-2 bg-black text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {changingPassword ? (
+                <>
+                  <Loader2
+                    size={18}
+                    className="animate-spin"
+                  />
+
+                  Changing...
+                </>
+              ) : (
+                <>
+                  <LockKeyhole size={18} />
+
+                  Change Password
+                </>
+              )}
+            </button>
+
+          </div>
+        </section>
+
+        {/* =================================================
+            STORE INFORMATION
+        ================================================= */}
+
+        <section className="bg-white border border-gray-200 rounded-2xl p-5 md:p-7 shadow-sm">
+
+          <div className="flex items-center gap-3 mb-6">
+
             <div className="p-2 bg-gray-100 rounded-lg">
               <Store size={20} />
             </div>
@@ -416,20 +691,26 @@ const AdminSettings = () => {
                 your store.
               </p>
             </div>
+
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
             <Input
               label="Store Name"
               name="storeName"
-              value={settings.storeName}
+              value={
+                settings.storeName
+              }
               onChange={handleChange}
             />
 
             <Input
               label="Currency"
               name="currency"
-              value={settings.currency}
+              value={
+                settings.currency
+              }
               onChange={handleChange}
             />
 
@@ -437,47 +718,63 @@ const AdminSettings = () => {
               label="Email"
               name="email"
               type="email"
-              value={settings.email}
+              value={
+                settings.email
+              }
               onChange={handleChange}
             />
 
             <Input
               label="Phone"
               name="phone"
-              value={settings.phone}
+              value={
+                settings.phone
+              }
               onChange={handleChange}
             />
 
             <Input
               label="Logo URL"
               name="logo"
-              value={settings.logo}
+              value={
+                settings.logo
+              }
               onChange={handleChange}
               className="md:col-span-2"
             />
 
             <div className="md:col-span-2">
+
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Store Address
               </label>
 
               <textarea
                 name="address"
-                value={settings.address}
-                onChange={handleChange}
+                value={
+                  settings.address
+                }
+                onChange={
+                  handleChange
+                }
                 rows={3}
                 className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:ring-2 focus:ring-black"
               />
+
             </div>
+
           </div>
+
         </section>
 
-        {/* =========================
+        {/* =================================================
             SHIPPING
-        ========================= */}
+        ================================================= */}
 
         <section className="bg-white border border-gray-200 rounded-2xl p-5 md:p-7 shadow-sm">
+
           <div className="flex items-center gap-3 mb-6">
+
             <div className="p-2 bg-gray-100 rounded-lg">
               <Truck size={20} />
             </div>
@@ -492,17 +789,23 @@ const AdminSettings = () => {
                 shipping.
               </p>
             </div>
+
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
             <Input
               label="Shipping Fee (₹)"
               name="shippingFee"
               type="number"
               min="0"
               step="0.01"
-              value={settings.shippingFee}
-              onChange={handleChange}
+              value={
+                settings.shippingFee
+              }
+              onChange={
+                handleChange
+              }
             />
 
             <Input
@@ -514,25 +817,35 @@ const AdminSettings = () => {
               value={
                 settings.freeShippingThreshold
               }
-              onChange={handleChange}
+              onChange={
+                handleChange
+              }
             />
+
           </div>
 
           <div className="mt-5 rounded-xl bg-gray-50 border border-gray-200 p-4 text-sm text-gray-600">
-            <strong>Example:</strong> If shipping
-            fee is ₹80 and free shipping threshold
-            is ₹999, orders below ₹999 pay ₹80
-            shipping. Orders of ₹999 or more get
+
+            <strong>
+              Example:
+            </strong>{" "}
+            If shipping fee is ₹80 and free shipping
+            threshold is ₹999, orders below ₹999 pay
+            ₹80 shipping. Orders of ₹999 or more get
             free shipping.
+
           </div>
+
         </section>
 
-        {/* =========================
+        {/* =================================================
             GST
-        ========================= */}
+        ================================================= */}
 
         <section className="bg-white border border-gray-200 rounded-2xl p-5 md:p-7 shadow-sm">
+
           <div className="flex items-center gap-3 mb-6">
+
             <div className="p-2 bg-gray-100 rounded-lg">
               <Percent size={20} />
             </div>
@@ -547,9 +860,11 @@ const AdminSettings = () => {
                 checkout.
               </p>
             </div>
+
           </div>
 
           <div className="max-w-md">
+
             <Input
               label="GST (%)"
               name="gst"
@@ -557,18 +872,26 @@ const AdminSettings = () => {
               min="0"
               max="100"
               step="0.01"
-              value={settings.gst}
-              onChange={handleChange}
+              value={
+                settings.gst
+              }
+              onChange={
+                handleChange
+              }
             />
+
           </div>
+
         </section>
 
-        {/* =========================
+        {/* =================================================
             COD
-        ========================= */}
+        ================================================= */}
 
         <section className="bg-white border border-gray-200 rounded-2xl p-5 md:p-7 shadow-sm">
+
           <div className="flex items-center gap-3 mb-6">
+
             <div className="p-2 bg-gray-100 rounded-lg">
               <CreditCard size={20} />
             </div>
@@ -583,12 +906,15 @@ const AdminSettings = () => {
                 online advance payment required.
               </p>
             </div>
+
           </div>
 
           {/* COD ENABLED */}
 
           <div className="flex items-center justify-between gap-4 border border-gray-200 rounded-xl p-4 mb-4">
+
             <div>
+
               <p className="font-medium text-gray-900">
                 Enable Cash on Delivery
               </p>
@@ -597,26 +923,36 @@ const AdminSettings = () => {
                 Allow customers to select COD during
                 checkout.
               </p>
+
             </div>
 
             <Toggle
-              checked={settings.codEnabled}
+              checked={
+                settings.codEnabled
+              }
               onChange={(checked) =>
-                setSettings((previous) => ({
-                  ...previous,
-                  codEnabled: checked,
-                  codAdvanceEnabled: checked
-                    ? previous.codAdvanceEnabled
-                    : false,
-                }))
+                setSettings(
+                  (previous) => ({
+                    ...previous,
+                    codEnabled:
+                      checked,
+                    codAdvanceEnabled:
+                      checked
+                        ? previous.codAdvanceEnabled
+                        : false,
+                  })
+                )
               }
             />
+
           </div>
 
-          {/* ADVANCE ENABLED */}
+          {/* ADVANCE */}
 
           <div className="flex items-center justify-between gap-4 border border-gray-200 rounded-xl p-4 mb-6">
+
             <div>
+
               <p className="font-medium text-gray-900">
                 Require COD Advance Payment
               </p>
@@ -625,24 +961,32 @@ const AdminSettings = () => {
                 Customer pays a percentage online and
                 the remaining amount at delivery.
               </p>
+
             </div>
 
             <Toggle
               checked={
                 settings.codAdvanceEnabled
               }
-              disabled={!settings.codEnabled}
+              disabled={
+                !settings.codEnabled
+              }
               onChange={(checked) =>
-                setSettings((previous) => ({
-                  ...previous,
-                  codAdvanceEnabled: checked,
-                }))
+                setSettings(
+                  (previous) => ({
+                    ...previous,
+                    codAdvanceEnabled:
+                      checked,
+                  })
+                )
               }
             />
+
           </div>
 
           {settings.codAdvanceEnabled && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+
               <Input
                 label="Advance Payment (%)"
                 name="codAdvancePercentage"
@@ -653,7 +997,9 @@ const AdminSettings = () => {
                 value={
                   settings.codAdvancePercentage
                 }
-                onChange={handleChange}
+                onChange={
+                  handleChange
+                }
               />
 
               <Input
@@ -665,7 +1011,9 @@ const AdminSettings = () => {
                 value={
                   settings.codMinimumAdvance
                 }
-                onChange={handleChange}
+                onChange={
+                  handleChange
+                }
               />
 
               <Input
@@ -678,24 +1026,31 @@ const AdminSettings = () => {
                 value={
                   settings.codMaximumOrderValue
                 }
-                onChange={handleChange}
+                onChange={
+                  handleChange
+                }
               />
+
             </div>
           )}
 
           {/* EXAMPLE */}
 
           <div className="mt-6 rounded-xl bg-gray-50 border border-gray-200 p-5">
+
             <p className="font-semibold text-gray-900 mb-2">
               How COD Advance Works
             </p>
 
             {settings.codAdvanceEnabled ? (
               <p className="text-sm text-gray-600 leading-6">
+
                 If the order total is ₹2,000 and
                 advance payment is{" "}
                 <strong>
-                  {settings.codAdvancePercentage}%
+                  {
+                    settings.codAdvancePercentage
+                  }%
                 </strong>
                 , the customer will pay approximately{" "}
                 <strong>
@@ -710,6 +1065,7 @@ const AdminSettings = () => {
                 </strong>{" "}
                 online. The remaining amount is
                 collected when the order is delivered.
+
               </p>
             ) : (
               <p className="text-sm text-gray-600">
@@ -718,15 +1074,19 @@ const AdminSettings = () => {
                 COD amount at delivery.
               </p>
             )}
+
           </div>
+
         </section>
 
-        {/* =========================
+        {/* =================================================
             SOCIAL LINKS
-        ========================= */}
+        ================================================= */}
 
         <section className="bg-white border border-gray-200 rounded-2xl p-5 md:p-7 shadow-sm">
+
           <div className="flex items-center gap-3 mb-6">
+
             <div className="p-2 bg-gray-100 rounded-lg">
               <Globe size={20} />
             </div>
@@ -740,16 +1100,20 @@ const AdminSettings = () => {
                 Links displayed in the store footer.
               </p>
             </div>
+
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
             <SocialInput
               label="Instagram"
               name="instagram"
               value={
                 settings.socialLinks.instagram
               }
-              onChange={handleSocialChange}
+              onChange={
+                handleSocialChange
+              }
             />
 
             <SocialInput
@@ -758,7 +1122,9 @@ const AdminSettings = () => {
               value={
                 settings.socialLinks.facebook
               }
-              onChange={handleSocialChange}
+              onChange={
+                handleSocialChange
+              }
             />
 
             <SocialInput
@@ -767,7 +1133,9 @@ const AdminSettings = () => {
               value={
                 settings.socialLinks.youtube
               }
-              onChange={handleSocialChange}
+              onChange={
+                handleSocialChange
+              }
             />
 
             <SocialInput
@@ -776,63 +1144,135 @@ const AdminSettings = () => {
               value={
                 settings.socialLinks.twitter
               }
-              onChange={handleSocialChange}
+              onChange={
+                handleSocialChange
+              }
             />
+
           </div>
+
         </section>
 
-        {/* =========================
+        {/* =================================================
             FOOTER
-        ========================= */}
+        ================================================= */}
 
         <section className="bg-white border border-gray-200 rounded-2xl p-5 md:p-7 shadow-sm">
+
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Footer Text
           </label>
 
           <textarea
             name="footerText"
-            value={settings.footerText}
-            onChange={handleChange}
+            value={
+              settings.footerText
+            }
+            onChange={
+              handleChange
+            }
             rows={3}
             className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:ring-2 focus:ring-black"
           />
+
         </section>
 
-        {/* =========================
-            SAVE BUTTON
-        ========================= */}
+        {/* =================================================
+            SAVE SETTINGS
+        ================================================= */}
 
         <div className="flex justify-end">
+
           <button
             type="submit"
             disabled={saving}
             className="inline-flex items-center justify-center gap-2 bg-black text-white px-7 py-3 rounded-xl font-semibold hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed transition"
           >
+
             {saving ? (
               <>
                 <Loader2
                   size={18}
                   className="animate-spin"
                 />
+
                 Saving...
               </>
             ) : (
               <>
                 <Save size={18} />
+
                 Save Settings
               </>
             )}
+
           </button>
+
         </div>
+
       </form>
     </div>
   );
 };
 
-/* =========================
-   INPUT COMPONENT
-========================= */
+// =====================================================
+// PASSWORD INPUT
+// =====================================================
+
+const PasswordInput = ({
+  label,
+  value,
+  onChange,
+  showPassword,
+  setShowPassword,
+  placeholder,
+}) => {
+  return (
+    <div>
+
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        {label}
+      </label>
+
+      <div className="relative">
+
+        <input
+          type={
+            showPassword
+              ? "text"
+              : "password"
+          }
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          className="w-full rounded-xl border border-gray-300 px-4 py-3 pr-12 outline-none focus:ring-2 focus:ring-black"
+        />
+
+        <button
+          type="button"
+          onClick={() =>
+            setShowPassword(
+              !showPassword
+            )
+          }
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-black"
+        >
+          {showPassword ? (
+            <EyeOff size={19} />
+          ) : (
+            <Eye size={19} />
+          )}
+        </button>
+
+      </div>
+
+    </div>
+  );
+};
+
+// =====================================================
+// NORMAL INPUT
+// =====================================================
 
 const Input = ({
   label,
@@ -848,6 +1288,7 @@ const Input = ({
 }) => {
   return (
     <div className={className}>
+
       <label className="block text-sm font-medium text-gray-700 mb-2">
         {label}
       </label>
@@ -863,13 +1304,14 @@ const Input = ({
         placeholder={placeholder}
         className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:ring-2 focus:ring-black"
       />
+
     </div>
   );
 };
 
-/* =========================
-   SOCIAL INPUT
-========================= */
+// =====================================================
+// SOCIAL INPUT
+// =====================================================
 
 const SocialInput = ({
   label,
@@ -879,6 +1321,7 @@ const SocialInput = ({
 }) => {
   return (
     <div>
+
       <label className="block text-sm font-medium text-gray-700 mb-2">
         {label}
       </label>
@@ -891,13 +1334,14 @@ const SocialInput = ({
         placeholder={`https://${name}.com/...`}
         className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:ring-2 focus:ring-black"
       />
+
     </div>
   );
 };
 
-/* =========================
-   TOGGLE
-========================= */
+// =====================================================
+// TOGGLE
+// =====================================================
 
 const Toggle = ({
   checked,
@@ -908,9 +1352,13 @@ const Toggle = ({
     <button
       type="button"
       disabled={disabled}
-      onClick={() => onChange(!checked)}
+      onClick={() =>
+        onChange(!checked)
+      }
       className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition ${
-        checked ? "bg-black" : "bg-gray-300"
+        checked
+          ? "bg-black"
+          : "bg-gray-300"
       } ${
         disabled
           ? "opacity-40 cursor-not-allowed"
@@ -921,7 +1369,9 @@ const Toggle = ({
     >
       <span
         className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
-          checked ? "left-6" : "left-1"
+          checked
+            ? "left-6"
+            : "left-1"
         }`}
       />
     </button>
@@ -929,4 +1379,3 @@ const Toggle = ({
 };
 
 export default AdminSettings;
-

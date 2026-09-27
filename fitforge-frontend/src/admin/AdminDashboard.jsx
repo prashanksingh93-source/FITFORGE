@@ -416,7 +416,7 @@ const AdminDashboard = () => {
 
               <Link
                 to="/admin/settings"
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-5 py-3 text-sm font-bold text-white transition hover:bg-gray-800"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[oklch(45%_0.017_213.2)] px-5 py-3 text-sm font-bold text-white transition hover:bg-gray-800"
               >
                 <Settings size={17} />
                 MANAGE SETTINGS
@@ -773,14 +773,6 @@ const AdminDashboard = () => {
               >
                 <Tag size={17} />
                 COUPONS
-              </Link>
-
-              <Link
-                to="/admin/settings"
-                className="flex items-center gap-2 border border-gray-200 p-4 font-bold transition hover:bg-black hover:text-white"
-              >
-                <Settings size={17} />
-                SETTINGS
               </Link>
 
             </div>
