@@ -116,7 +116,7 @@ const AdminLogin = () => {
               onChange={(e) =>
                 setEmail(e.target.value)
               }
-              placeholder="admin@fitforge.com"
+              placeholder="Enter email"
               className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none focus:border-black"
             />
           </div>
