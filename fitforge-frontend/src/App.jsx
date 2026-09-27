@@ -1,4 +1,10 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+} from "react-router-dom";
+
 import { Toaster } from "sonner";
 
 import Layout from "./layouts/Layout";
@@ -21,6 +27,13 @@ import Checkout from "./pages/Checkout";
 import Settings from "./pages/Settings";
 
 // =====================================================
+// LIVE DELIVERY TRACKING
+// =====================================================
+
+import TrackOrder from "./pages/TrackOrder";
+import DeliveryTracking from "./pages/DeliveryTracking";
+
+// =====================================================
 // ADMIN
 // =====================================================
 
@@ -34,7 +47,6 @@ import AdminOrderDetails from "./admin/AdminOrderDetails";
 import AdminCustomers from "./admin/AdminCustomers";
 import AdminCustomerDetails from "./admin/AdminCustomerDetails";
 import AdminInventory from "./admin/AdminInventory";
-// import AdminPromotions from "./admin/AdminPromotions";
 import AdminHomepage from "./admin/AdminHomepage";
 import AdminCategories from "./admin/AdminCategories";
 import AdminReviews from "./admin/AdminReviews";
@@ -103,37 +115,51 @@ const App = () => {
           TOASTER
       ================================================== */}
 
-      <Toaster position="top-right" richColors closeButton />
+      <Toaster
+        position="top-right"
+        richColors
+        closeButton
+      />
 
       {/* =================================================
           ALL ROUTES
       ================================================== */}
 
       <Routes>
+
         {/* =================================================
             CUSTOMER LAYOUT
         ================================================== */}
 
         <Route element={<Layout />}>
+
           {/* =================================================
               ANIMATED CUSTOMER PAGES
-
-              Layout is outside AnimatedRoutes.
-              Therefore Navbar stays static.
           ================================================== */}
 
           <Route element={<AnimatedRoutes />}>
+
             {/* =================================================
                 HOME
             ================================================== */}
 
-            <Route path="/" element={<Home />} />
+            <Route
+              path="/"
+              element={<Home />}
+            />
 
             {/* =================================================
                 SHOP
             ================================================== */}
 
-            <Route path="/shop" element={<Shop excludeCollection="Luxury" />} />
+            <Route
+              path="/shop"
+              element={
+                <Shop
+                  excludeCollection="Luxury"
+                />
+              }
+            />
 
             {/* =================================================
                 PERFORMANCE
@@ -141,51 +167,75 @@ const App = () => {
 
             <Route
               path="/performance"
-              element={<Shop collection="Performance" />}
+              element={
+                <Shop collection="Performance" />
+              }
             />
 
             {/* =================================================
                 LUXURY
             ================================================== */}
 
-            <Route path="/luxury" element={<Shop collection="Luxury" />} />
+            <Route
+              path="/luxury"
+              element={
+                <Shop collection="Luxury" />
+              }
+            />
 
             {/* =================================================
                 CUSTOMER SETTINGS
-                Change Password
             ================================================== */}
 
-            <Route path="/settings" element={<Settings />} />
+            <Route
+              path="/settings"
+              element={<Settings />}
+            />
 
             {/* =================================================
                 PRODUCT DETAILS
             ================================================== */}
 
-            <Route path="/product/:id" element={<ProductDetails />} />
+            <Route
+              path="/product/:id"
+              element={<ProductDetails />}
+            />
 
             {/* =================================================
                 CART
             ================================================== */}
 
-            <Route path="/cart" element={<Cart />} />
+            <Route
+              path="/cart"
+              element={<Cart />}
+            />
 
             {/* =================================================
                 WISHLIST
             ================================================== */}
 
-            <Route path="/wishlist" element={<Wishlist />} />
+            <Route
+              path="/wishlist"
+              element={<Wishlist />}
+            />
 
             {/* =================================================
                 LOGIN
             ================================================== */}
 
-            <Route path="/login" element={<Login />} />
+            <Route
+              path="/login"
+              element={<Login />}
+            />
 
             {/* =================================================
                 REGISTER
             ================================================== */}
 
-            <Route path="/register" element={<Register />} />
+            <Route
+              path="/register"
+              element={<Register />}
+            />
 
             {/* =================================================
                 PROFILE
@@ -238,14 +288,57 @@ const App = () => {
                 </ProtectedRoute>
               }
             />
+
+            {/* =================================================
+                CUSTOMER LIVE ORDER TRACKING
+            ==================================================
+
+                Example:
+                /orders/68abc123/track
+
+            ================================================== */}
+
+            <Route
+              path="/orders/:id/track"
+              element={
+                <ProtectedRoute>
+                  <TrackOrder />
+                </ProtectedRoute>
+              }
+            />
+
           </Route>
         </Route>
+
+        {/* =================================================
+            DELIVERY PARTNER LIVE TRACKING
+        ==================================================
+
+            Example:
+            /delivery/68abc123
+
+            The delivery partner opens this page
+            and explicitly starts location sharing.
+
+        ================================================== */}
+
+        <Route
+          path="/delivery/:orderId"
+          element={
+            <ProtectedRoute>
+              <DeliveryTracking />
+            </ProtectedRoute>
+          }
+        />
 
         {/* =================================================
             ADMIN LOGIN
         ================================================== */}
 
-        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route
+          path="/admin/login"
+          element={<AdminLogin />}
+        />
 
         {/* =================================================
             ADMIN DASHBOARD
@@ -378,21 +471,6 @@ const App = () => {
         />
 
         {/* =================================================
-            ADMIN PROMOTIONS
-        ================================================== */}
-
-        {/*
-        <Route
-          path="/admin/promotions"
-          element={
-            <AdminRoute>
-              <AdminPromotions />
-            </AdminRoute>
-          }
-        />
-        */}
-
-        {/* =================================================
             ADMIN HOMEPAGE
         ================================================== */}
 
@@ -413,8 +491,8 @@ const App = () => {
           path="/admin/reviews"
           element={
             <AdminRoute>
-              <AdminReviews />
-            </AdminRoute>
+  <AdminReviews />
+</AdminRoute>
           }
         />
 
@@ -425,9 +503,9 @@ const App = () => {
         <Route
           path="/admin/coupons"
           element={
-            <AdminRoute>
-              <AdminCoupons />
-            </AdminRoute>
+           <AdminRoute>
+  <AdminReviews />
+</AdminRoute>
           }
         />
 
@@ -458,13 +536,18 @@ const App = () => {
         />
 
         {/* =================================================
-            404 / UNKNOWN ROUTE
+            404
         ================================================== */}
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route
+          path="*"
+          element={<Navigate to="/" replace />}
+        />
+
       </Routes>
     </BrowserRouter>
   );
 };
 
 export default App;
+

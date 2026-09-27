@@ -1,22 +1,33 @@
-
 import StoreSettings from "../models/StoreSettings.js";
 
 /*
-  Get store settings
-  GET /api/settings
+=========================================================
+GET STORE SETTINGS
+GET /api/settings
+=========================================================
 */
+
 export const getStoreSettings = async (req, res) => {
   try {
     let settings = await StoreSettings.findOne();
 
-    // Create default settings automatically if none exist
+    // Create default settings if none exist
     if (!settings) {
       settings = await StoreSettings.create({
         storeName: "FITFORGE",
         currency: "INR",
+
         shippingFee: 0,
         freeShippingThreshold: 999,
         gst: 0,
+
+        // COD
+        codEnabled: true,
+        codAdvanceEnabled: false,
+        codAdvancePercentage: 20,
+        codMinimumAdvance: 0,
+        codMaximumOrderValue: null,
+
         footerText: "© FITFORGE. All rights reserved.",
       });
     }
@@ -36,9 +47,12 @@ export const getStoreSettings = async (req, res) => {
 };
 
 /*
-  Update store settings
-  PATCH /api/settings
+=========================================================
+UPDATE STORE SETTINGS
+PATCH /api/settings
+=========================================================
 */
+
 export const updateStoreSettings = async (req, res) => {
   try {
     const {
@@ -48,9 +62,18 @@ export const updateStoreSettings = async (req, res) => {
       phone,
       address,
       currency,
+
       shippingFee,
       freeShippingThreshold,
       gst,
+
+      // COD
+      codEnabled,
+      codAdvanceEnabled,
+      codAdvancePercentage,
+      codMinimumAdvance,
+      codMaximumOrderValue,
+
       socialLinks,
       footerText,
     } = req.body;
@@ -61,6 +84,12 @@ export const updateStoreSettings = async (req, res) => {
       settings = new StoreSettings();
     }
 
+    /*
+    =====================================================
+    STORE INFORMATION
+    =====================================================
+    */
+
     if (storeName !== undefined) {
       settings.storeName = String(storeName).trim();
     }
@@ -70,7 +99,9 @@ export const updateStoreSettings = async (req, res) => {
     }
 
     if (email !== undefined) {
-      settings.email = String(email).trim().toLowerCase();
+      settings.email = String(email)
+        .trim()
+        .toLowerCase();
     }
 
     if (phone !== undefined) {
@@ -82,8 +113,16 @@ export const updateStoreSettings = async (req, res) => {
     }
 
     if (currency !== undefined) {
-      settings.currency = String(currency).trim().toUpperCase();
+      settings.currency = String(currency)
+        .trim()
+        .toUpperCase();
     }
+
+    /*
+    =====================================================
+    SHIPPING
+    =====================================================
+    */
 
     if (shippingFee !== undefined) {
       const value = Number(shippingFee);
@@ -99,22 +138,35 @@ export const updateStoreSettings = async (req, res) => {
     }
 
     if (freeShippingThreshold !== undefined) {
-      const value = Number(freeShippingThreshold);
+      const value = Number(
+        freeShippingThreshold
+      );
 
       if (!Number.isFinite(value) || value < 0) {
         return res.status(400).json({
           success: false,
-          message: "Invalid free shipping threshold",
+          message:
+            "Invalid free shipping threshold",
         });
       }
 
       settings.freeShippingThreshold = value;
     }
 
+    /*
+    =====================================================
+    GST
+    =====================================================
+    */
+
     if (gst !== undefined) {
       const value = Number(gst);
 
-      if (!Number.isFinite(value) || value < 0 || value > 100) {
+      if (
+        !Number.isFinite(value) ||
+        value < 0 ||
+        value > 100
+      ) {
         return res.status(400).json({
           success: false,
           message: "GST must be between 0 and 100",
@@ -124,48 +176,183 @@ export const updateStoreSettings = async (req, res) => {
       settings.gst = value;
     }
 
+    /*
+    =====================================================
+    COD ENABLE / DISABLE
+    =====================================================
+    */
+
+    if (codEnabled !== undefined) {
+      settings.codEnabled =
+        Boolean(codEnabled);
+    }
+
+    /*
+    =====================================================
+    COD ADVANCE ENABLE / DISABLE
+    =====================================================
+    */
+
+    if (codAdvanceEnabled !== undefined) {
+      settings.codAdvanceEnabled =
+        Boolean(codAdvanceEnabled);
+    }
+
+    /*
+    =====================================================
+    COD ADVANCE PERCENTAGE
+    =====================================================
+    */
+
+    if (codAdvancePercentage !== undefined) {
+      const value = Number(
+        codAdvancePercentage
+      );
+
+      if (
+        !Number.isFinite(value) ||
+        value < 0 ||
+        value > 100
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "COD advance percentage must be between 0 and 100",
+        });
+      }
+
+      settings.codAdvancePercentage = value;
+    }
+
+    /*
+    =====================================================
+    COD MINIMUM ADVANCE
+    =====================================================
+    */
+
+    if (codMinimumAdvance !== undefined) {
+      const value = Number(
+        codMinimumAdvance
+      );
+
+      if (!Number.isFinite(value) || value < 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "COD minimum advance cannot be negative",
+        });
+      }
+
+      settings.codMinimumAdvance = value;
+    }
+
+    /*
+    =====================================================
+    COD MAXIMUM ORDER VALUE
+    =====================================================
+    */
+
+    if (codMaximumOrderValue !== undefined) {
+      // Empty value means unlimited
+      if (
+        codMaximumOrderValue === null ||
+        codMaximumOrderValue === ""
+      ) {
+        settings.codMaximumOrderValue = null;
+      } else {
+        const value = Number(
+          codMaximumOrderValue
+        );
+
+        if (!Number.isFinite(value) || value < 0) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "COD maximum order value is invalid",
+          });
+        }
+
+        settings.codMaximumOrderValue = value;
+      }
+    }
+
+    /*
+    =====================================================
+    SOCIAL LINKS
+    =====================================================
+    */
+
     if (socialLinks !== undefined) {
       settings.socialLinks = {
         instagram:
           socialLinks.instagram !== undefined
-            ? String(socialLinks.instagram).trim()
-            : settings.socialLinks?.instagram || "",
+            ? String(
+                socialLinks.instagram
+              ).trim()
+            : settings.socialLinks?.instagram ||
+              "",
 
         facebook:
           socialLinks.facebook !== undefined
-            ? String(socialLinks.facebook).trim()
-            : settings.socialLinks?.facebook || "",
+            ? String(
+                socialLinks.facebook
+              ).trim()
+            : settings.socialLinks?.facebook ||
+              "",
 
         youtube:
           socialLinks.youtube !== undefined
-            ? String(socialLinks.youtube).trim()
-            : settings.socialLinks?.youtube || "",
+            ? String(
+                socialLinks.youtube
+              ).trim()
+            : settings.socialLinks?.youtube ||
+              "",
 
         twitter:
           socialLinks.twitter !== undefined
-            ? String(socialLinks.twitter).trim()
-            : settings.socialLinks?.twitter || "",
+            ? String(
+                socialLinks.twitter
+              ).trim()
+            : settings.socialLinks?.twitter ||
+              "",
       };
     }
 
+    /*
+    =====================================================
+    FOOTER
+    =====================================================
+    */
+
     if (footerText !== undefined) {
-      settings.footerText = String(footerText).trim();
+      settings.footerText =
+        String(footerText).trim();
     }
+
+    /*
+    =====================================================
+    SAVE
+    =====================================================
+    */
 
     await settings.save();
 
     return res.status(200).json({
       success: true,
-      message: "Store settings updated successfully",
+      message:
+        "Store settings updated successfully",
       settings,
     });
   } catch (error) {
-    console.error("UPDATE STORE SETTINGS ERROR:", error);
+    console.error(
+      "UPDATE STORE SETTINGS ERROR:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to update store settings",
+      message:
+        "Failed to update store settings",
     });
   }
 };
-
